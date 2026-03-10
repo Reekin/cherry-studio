@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto'
+
 import { loggerService } from '@logger'
 import { MESSAGE_STREAM_TIMEOUT_MS } from '@main/apiServer/config/timeouts'
 import {
@@ -5,6 +7,7 @@ import {
   STREAM_TIMEOUT_REASON,
   type StreamAbortController
 } from '@main/apiServer/utils/createStreamAbortController'
+import { agentRemoteService } from '@main/services/agentRemote'
 import { agentService, sessionMessageService, sessionService } from '@main/services/agents'
 import type { Request, Response } from 'express'
 
@@ -41,6 +44,21 @@ export const createMessage = async (req: Request, res: Response): Promise<void> 
 
     logger.info('Creating streaming message', { agentId, sessionId })
     logger.debug('Streaming message payload', { messageData })
+
+    const desktopRunId = randomUUID()
+    const desktopRunRegistration = agentRemoteService.registerDesktopRun({
+      runId: desktopRunId,
+      sessionId,
+      agentId
+    })
+
+    if (desktopRunRegistration.accepted) {
+      agentRemoteService.publishSessionPushed({
+        sessionId,
+        agentId,
+        pushedAt: Date.now()
+      })
+    }
 
     // Set SSE headers
     res.setHeader('Content-Type', 'text/event-stream')
@@ -201,6 +219,29 @@ export const createMessage = async (req: Request, res: Response): Promise<void> 
     completion
       .then(() => {
         streamFinished = true
+        if (desktopRunRegistration.accepted) {
+          void agentRemoteService
+            .getSnapshotProvider()
+            .getSessionSnapshot(sessionId)
+            .then((snapshot) => {
+              if (!snapshot) {
+                return
+              }
+
+              agentRemoteService.publishSessionVersionBump({
+                sessionId,
+                version: snapshot.snapshotVersion,
+                updatedAt: snapshot.updatedAt
+              })
+            })
+            .catch((snapshotError) => {
+              logger.warn('Failed to publish desktop-origin version bump', {
+                agentId,
+                sessionId,
+                error: snapshotError instanceof Error ? snapshotError.message : String(snapshotError)
+              })
+            })
+        }
         finalizeResponse()
       })
       .catch((error) => {

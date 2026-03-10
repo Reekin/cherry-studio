@@ -1,10 +1,11 @@
 import HorizontalScrollContainer from '@renderer/components/HorizontalScrollContainer'
 import { useActiveSession } from '@renderer/hooks/agents/useActiveSession'
 import { useUpdateSession } from '@renderer/hooks/agents/useUpdateSession'
+import { useAgentRemote } from '@renderer/hooks/useAgentRemote'
 import { AgentSettingsPopup, SessionSettingsPopup } from '@renderer/pages/settings/AgentSettings'
 import { AgentLabel, SessionLabel } from '@renderer/pages/settings/AgentSettings/shared'
 import type { AgentEntity, ApiModel } from '@renderer/types'
-import { ChevronRight } from 'lucide-react'
+import { ChevronRight, Wifi, WifiOff } from 'lucide-react'
 import { useCallback } from 'react'
 
 import SelectAgentBaseModelButton from '../../SelectAgentBaseModelButton'
@@ -19,6 +20,7 @@ type AgentContentProps = {
 const AgentContent = ({ activeAgent }: AgentContentProps) => {
   const { session: activeSession } = useActiveSession()
   const { updateModel } = useUpdateSession(activeAgent?.id ?? null)
+  const { status: remoteStatus } = useAgentRemote()
 
   const handleUpdateModel = useCallback(
     async (model: ApiModel) => {
@@ -76,6 +78,24 @@ const AgentContent = ({ activeAgent }: AgentContentProps) => {
 
                 {/* Workspace Meta */}
                 <SessionWorkspaceMeta agent={activeAgent} session={activeSession} />
+
+                {remoteStatus.enabled && (
+                  <>
+                    <ChevronRight className="h-4 w-4 text-gray-400" />
+                    <div
+                      className={`flex items-center gap-1.5 text-xs ${
+                        remoteStatus.bridgeOnline ? 'text-emerald-600' : 'text-amber-600'
+                      }`}
+                      title={remoteStatus.lastError ?? remoteStatus.relayUrl ?? undefined}>
+                      {remoteStatus.bridgeOnline ? (
+                        <Wifi className="h-3.5 w-3.5" />
+                      ) : (
+                        <WifiOff className="h-3.5 w-3.5" />
+                      )}
+                      <span>{remoteStatus.bridgeOnline ? 'iOS linked' : 'Relay offline'}</span>
+                    </div>
+                  </>
+                )}
               </>
             )}
           </div>

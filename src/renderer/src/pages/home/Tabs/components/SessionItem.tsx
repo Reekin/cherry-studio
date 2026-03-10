@@ -1,6 +1,7 @@
 import { DeleteIcon, EditIcon } from '@renderer/components/Icons'
 import { isMac } from '@renderer/config/constant'
 import { useUpdateSession } from '@renderer/hooks/agents/useUpdateSession'
+import { useAgentRemote } from '@renderer/hooks/useAgentRemote'
 import { useInPlaceEdit } from '@renderer/hooks/useInPlaceEdit'
 import { useRuntime } from '@renderer/hooks/useRuntime'
 import { useSettings } from '@renderer/hooks/useSettings'
@@ -15,7 +16,7 @@ import { classNames } from '@renderer/utils'
 import { buildAgentSessionTopicId } from '@renderer/utils/agentSession'
 import type { MenuProps } from 'antd'
 import { Dropdown, Tooltip } from 'antd'
-import { MenuIcon, Sparkles, XIcon } from 'lucide-react'
+import { MenuIcon, Smartphone, Sparkles, XIcon } from 'lucide-react'
 import type { FC } from 'react'
 import React, { memo, startTransition, useDeferredValue, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -41,6 +42,7 @@ const SessionItem: FC<SessionItemProps> = ({ session, agentId, onDelete, onPress
   const [_targetSession, setTargetSession] = useState<AgentSessionEntity>(session)
   const targetSession = useDeferredValue(_targetSession)
   const dispatch = useAppDispatch()
+  const { pushSession, status: remoteStatus } = useAgentRemote()
 
   const { isEditing, isSaving, startEdit, inputProps } = useInPlaceEdit({
     onSave: async (value) => {
@@ -131,6 +133,36 @@ const SessionItem: FC<SessionItemProps> = ({ session, agentId, onDelete, onPress
         }
       },
       {
+        label: t('agent.remote.push_to_ios', { defaultValue: 'Push to iOS' }),
+        key: 'push-to-ios',
+        icon: <Smartphone size={14} />,
+        disabled: !remoteStatus.enabled,
+        onClick: async () => {
+          try {
+            const accepted = await pushSession({ sessionId: session.id, agentId })
+            if (accepted) {
+              window.toast.success(
+                t('agent.remote.push_success', {
+                  defaultValue: 'Session pushed to iOS queue.'
+                })
+              )
+            } else {
+              window.toast.warning(
+                t('agent.remote.push_pending', {
+                  defaultValue: 'Relay is offline, session push was not accepted.'
+                })
+              )
+            }
+          } catch (_error) {
+            window.toast.error(
+              t('agent.remote.push_failed', {
+                defaultValue: 'Failed to push session to iOS.'
+              })
+            )
+          }
+        }
+      },
+      {
         label: t('settings.topic.position.label'),
         key: 'topic-position',
         icon: <MenuIcon size={14} />,
@@ -157,7 +189,18 @@ const SessionItem: FC<SessionItemProps> = ({ session, agentId, onDelete, onPress
         }
       }
     ],
-    [agentId, dispatch, onDelete, session.id, sessionTopicId, setTopicPosition, t, targetSession.id]
+    [
+      agentId,
+      dispatch,
+      onDelete,
+      pushSession,
+      remoteStatus.enabled,
+      session.id,
+      sessionTopicId,
+      setTopicPosition,
+      t,
+      targetSession.id
+    ]
   )
 
   return (

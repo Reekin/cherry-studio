@@ -108,6 +108,9 @@ export enum IpcChannel {
   AgentToolPermission_Request = 'agent-tool-permission:request',
   AgentToolPermission_Response = 'agent-tool-permission:response',
   AgentToolPermission_Result = 'agent-tool-permission:result',
+  AgentRemote_GetStatus = 'agent-remote:get-status',
+  AgentRemote_PushSession = 'agent-remote:push-session',
+  AgentRemote_StatusChanged = 'agent-remote:status-changed',
 
   //copilot
   Copilot_GetAuthMessage = 'copilot:get-auth-message',

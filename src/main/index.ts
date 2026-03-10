@@ -18,6 +18,7 @@ import { registerIpc } from './ipc'
 import { agentService } from './services/agents'
 import { analyticsService } from './services/AnalyticsService'
 import { apiServerService } from './services/ApiServerService'
+import { agentRemoteService } from './services/agentRemote'
 import { appMenuService } from './services/AppMenuService'
 import { configManager } from './services/ConfigManager'
 import { lanTransferClientService } from './services/lanTransfer'
@@ -158,6 +159,7 @@ if (!app.requestSingleInstanceLock()) {
     nodeTraceService.init()
     powerMonitorService.init()
     analyticsService.init()
+    agentRemoteService.start()
 
     app.on('activate', function () {
       const mainWindow = windowService.getMainWindow()

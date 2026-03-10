@@ -39,6 +39,7 @@ import type { ProxyConfig } from 'electron'
 import { BrowserWindow, dialog, ipcMain, session, shell, systemPreferences, webContents } from 'electron'
 import fontList from 'font-list'
 
+import { agentRemoteService } from './services/agentRemote'
 import { agentMessageRepository } from './services/agents/database'
 import { PluginService } from './services/agents/plugins/PluginService'
 import { analyticsService } from './services/AnalyticsService'
@@ -275,6 +276,20 @@ export async function registerIpc(mainWindow: BrowserWindow, app: Electron.App) 
         throw error
       }
     }
+  )
+
+  const removeAgentRemoteStatusListener = agentRemoteService.subscribe((status) => {
+    if (!mainWindow.isDestroyed()) {
+      mainWindow.webContents.send(IpcChannel.AgentRemote_StatusChanged, status)
+    }
+  })
+  powerMonitorService.registerShutdownHandler(removeAgentRemoteStatusListener)
+
+  ipcMain.handle(IpcChannel.AgentRemote_GetStatus, () => agentRemoteService.getStatus())
+  ipcMain.handle(
+    IpcChannel.AgentRemote_PushSession,
+    async (_event, payload: { sessionId: string; agentId: string }): Promise<boolean> =>
+      agentRemoteService.pushSession(payload)
   )
 
   //only for mac

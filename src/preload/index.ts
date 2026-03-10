@@ -631,6 +631,37 @@ const api = {
       }
     }
   },
+  agentRemote: {
+    getStatus: (): Promise<{
+      enabled: boolean
+      relayUrl: string | null
+      deviceId: string
+      state: string
+      bridgeOnline: boolean
+      updatedAt: number
+      lastError?: string
+    }> => ipcRenderer.invoke(IpcChannel.AgentRemote_GetStatus),
+    pushSession: (payload: { sessionId: string; agentId: string }): Promise<boolean> =>
+      ipcRenderer.invoke(IpcChannel.AgentRemote_PushSession, payload),
+    onStatusChanged: (
+      callback: (status: {
+        enabled: boolean
+        relayUrl: string | null
+        deviceId: string
+        state: string
+        bridgeOnline: boolean
+        updatedAt: number
+        lastError?: string
+      }) => void
+    ): (() => void) => {
+      const channel = IpcChannel.AgentRemote_StatusChanged
+      const listener = (_: Electron.IpcRendererEvent, status: any) => callback(status)
+      ipcRenderer.on(channel, listener)
+      return () => {
+        ipcRenderer.removeListener(channel, listener)
+      }
+    }
+  },
   claudeCodePlugin: {
     install: (options: InstallPluginOptions): Promise<PluginResult<PluginMetadata>> =>
       ipcRenderer.invoke(IpcChannel.ClaudeCodePlugin_Install, options),
