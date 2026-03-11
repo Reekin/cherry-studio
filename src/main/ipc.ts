@@ -283,7 +283,15 @@ export async function registerIpc(mainWindow: BrowserWindow, app: Electron.App) 
       mainWindow.webContents.send(IpcChannel.AgentRemote_StatusChanged, status)
     }
   })
-  powerMonitorService.registerShutdownHandler(removeAgentRemoteStatusListener)
+  const removeAgentRemoteEventListener = agentRemoteService.subscribePublishedEvents((event) => {
+    if (!mainWindow.isDestroyed()) {
+      mainWindow.webContents.send(IpcChannel.AgentRemote_EventPublished, event)
+    }
+  })
+  powerMonitorService.registerShutdownHandler(() => {
+    removeAgentRemoteStatusListener()
+    removeAgentRemoteEventListener()
+  })
 
   ipcMain.handle(IpcChannel.AgentRemote_GetStatus, () => agentRemoteService.getStatus())
   ipcMain.handle(

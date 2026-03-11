@@ -111,6 +111,7 @@ export enum IpcChannel {
   AgentRemote_GetStatus = 'agent-remote:get-status',
   AgentRemote_PushSession = 'agent-remote:push-session',
   AgentRemote_StatusChanged = 'agent-remote:status-changed',
+  AgentRemote_EventPublished = 'agent-remote:event-published',
 
   //copilot
   Copilot_GetAuthMessage = 'copilot:get-auth-message',

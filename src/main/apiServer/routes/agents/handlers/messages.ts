@@ -12,6 +12,24 @@ import { agentService, sessionMessageService, sessionService } from '@main/servi
 import type { Request, Response } from 'express'
 
 const logger = loggerService.withContext('ApiServerMessagesHandlers')
+const DESKTOP_SNAPSHOT_POLL_MS = 150
+const DESKTOP_SNAPSHOT_TIMEOUT_MS = 4_000
+
+const waitForStableDesktopSnapshot = async (sessionId: string, baselineVersion: number, baselineUpdatedAt: number) => {
+  const startedAt = Date.now()
+
+  while (Date.now() - startedAt < DESKTOP_SNAPSHOT_TIMEOUT_MS) {
+    const snapshot = await agentRemoteService.getSnapshotProvider().getSessionSnapshot(sessionId)
+
+    if (snapshot && (snapshot.snapshotVersion > baselineVersion || snapshot.updatedAt > baselineUpdatedAt)) {
+      return snapshot
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, DESKTOP_SNAPSHOT_POLL_MS))
+  }
+
+  return null
+}
 
 // Helper function to verify agent and session exist and belong together
 const verifyAgentAndSession = async (agentId: string, sessionId: string) => {
@@ -39,7 +57,6 @@ export const createMessage = async (req: Request, res: Response): Promise<void> 
     const { agentId, sessionId } = req.params
 
     const session = await verifyAgentAndSession(agentId, sessionId)
-
     const messageData = req.body
 
     logger.info('Creating streaming message', { agentId, sessionId })
@@ -51,16 +68,10 @@ export const createMessage = async (req: Request, res: Response): Promise<void> 
       sessionId,
       agentId
     })
+    const baselineSnapshot = desktopRunRegistration.accepted
+      ? await agentRemoteService.getSnapshotProvider().getSessionSnapshot(sessionId)
+      : null
 
-    if (desktopRunRegistration.accepted) {
-      agentRemoteService.publishSessionPushed({
-        sessionId,
-        agentId,
-        pushedAt: Date.now()
-      })
-    }
-
-    // Set SSE headers
     res.setHeader('Content-Type', 'text/event-stream')
     res.setHeader('Cache-Control', 'no-cache')
     res.setHeader('Connection', 'keep-alive')
@@ -78,7 +89,6 @@ export const createMessage = async (req: Request, res: Response): Promise<void> 
     )
     const reader = stream.getReader()
 
-    // Track stream lifecycle so we keep the SSE connection open until persistence finishes
     let responseEnded = false
     let streamFinished = false
 
@@ -87,18 +97,13 @@ export const createMessage = async (req: Request, res: Response): Promise<void> 
     }
 
     const finalizeResponse = () => {
-      if (responseEnded) {
-        return
-      }
-
-      if (!streamFinished) {
+      if (responseEnded || !streamFinished) {
         return
       }
 
       responseEnded = true
       cleanup()
       try {
-        // res.write('data: {"type":"finish"}\n\n')
         res.write('data: [DONE]\n\n')
       } catch (writeError) {
         logger.error('Error writing final sentinel to SSE stream', { error: writeError as Error })
@@ -106,25 +111,6 @@ export const createMessage = async (req: Request, res: Response): Promise<void> 
       res.end()
     }
 
-    /**
-     * Client Disconnect Detection for Server-Sent Events (SSE)
-     *
-     * We monitor multiple HTTP events to reliably detect when a client disconnects
-     * from the streaming response. This is crucial for:
-     * - Aborting long-running Claude Code processes
-     * - Cleaning up resources and preventing memory leaks
-     * - Avoiding orphaned processes
-     *
-     * Event Priority & Behavior:
-     * 1. res.on('close') - Most common for SSE client disconnects (browser tab close, curl Ctrl+C)
-     * 2. req.on('aborted') - Explicit request abortion
-     * 3. req.on('close') - Request object closure (less common with SSE)
-     *
-     * When any disconnect event fires, we:
-     * - Abort the Claude Code SDK process via abortController
-     * - Clean up event listeners to prevent memory leaks
-     * - Mark the response as ended to prevent further writes
-     */
     registerAbortHandler((abortReason) => {
       cleanup()
 
@@ -220,11 +206,18 @@ export const createMessage = async (req: Request, res: Response): Promise<void> 
       .then(() => {
         streamFinished = true
         if (desktopRunRegistration.accepted) {
-          void agentRemoteService
-            .getSnapshotProvider()
-            .getSessionSnapshot(sessionId)
+          void waitForStableDesktopSnapshot(
+            sessionId,
+            baselineSnapshot?.snapshotVersion ?? 0,
+            baselineSnapshot?.updatedAt ?? 0
+          )
             .then((snapshot) => {
               if (!snapshot) {
+                logger.warn('Skipped desktop-origin version bump because snapshot did not advance in time', {
+                  agentId,
+                  sessionId,
+                  baselineVersion: baselineSnapshot?.snapshotVersion ?? 0
+                })
                 return
               }
 
@@ -265,7 +258,7 @@ export const createMessage = async (req: Request, res: Response): Promise<void> 
         cleanup()
         res.end()
       })
-    // Clear timeout when response ends
+
     res.on('close', cleanup)
     res.on('finish', cleanup)
   } catch (error: any) {
@@ -276,7 +269,6 @@ export const createMessage = async (req: Request, res: Response): Promise<void> 
       sessionId: req.params.sessionId
     })
 
-    // Send error as SSE if possible
     if (!res.headersSent) {
       res.setHeader('Content-Type', 'text/event-stream')
       res.setHeader('Cache-Control', 'no-cache')

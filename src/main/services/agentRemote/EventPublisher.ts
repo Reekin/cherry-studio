@@ -2,6 +2,7 @@ import { loggerService } from '@logger'
 
 import { BridgeSocketClient } from './BridgeSocketClient'
 import {
+  type AgentRemotePublishedEvent,
   type BridgePresencePayload,
   createRemoteEventEnvelope,
   type RemoteEnvelope,
@@ -14,7 +15,8 @@ const logger = loggerService.withContext('EventPublisher')
 export class EventPublisher {
   constructor(
     private readonly socketClient: BridgeSocketClient,
-    private readonly deviceId: string
+    private readonly deviceId: string,
+    private readonly onPublishedEvent?: (event: AgentRemotePublishedEvent) => void
   ) {}
 
   publishSessionPushed(payload: SessionPushedPayload): boolean {
@@ -58,6 +60,12 @@ export class EventPublisher {
     event: 'session.pushed' | 'session.version.bump' | 'bridge.online' | 'bridge.offline',
     payload: SessionPushedPayload | SessionVersionBumpPayload | BridgePresencePayload
   ): boolean {
+    this.onPublishedEvent?.({
+      event,
+      payload,
+      ts: Date.now()
+    })
+
     return this.publishEnvelope(createRemoteEventEnvelope(event, payload))
   }
 }

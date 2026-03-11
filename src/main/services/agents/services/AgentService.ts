@@ -1,5 +1,4 @@
 import { loggerService } from '@logger'
-import { pluginService } from '@main/services/agents/plugins/PluginService'
 import type {
   AgentEntity,
   CreateAgentRequest,
@@ -21,6 +20,11 @@ const logger = loggerService.withContext('AgentService')
 export class AgentService extends BaseService {
   private static instance: AgentService | null = null
   private readonly modelFields: AgentModelField[] = ['model', 'plan_model', 'small_model']
+
+  private async listInstalledPluginsFromCache(workdir: string) {
+    const { PluginService } = await import('@main/services/agents/plugins/PluginService')
+    return PluginService.getInstance().listInstalledFromCache(workdir)
+  }
 
   static getInstance(): AgentService {
     if (!AgentService.instance) {
@@ -87,7 +91,7 @@ export class AgentService extends BaseService {
     const workdir = agent.accessible_paths?.[0]
     if (workdir) {
       try {
-        agent.installed_plugins = await pluginService.listInstalledFromCache(workdir)
+        agent.installed_plugins = await this.listInstalledPluginsFromCache(workdir)
       } catch (error) {
         // Log error but don't fail the request
         logger.warn(`Failed to load installed plugins for agent ${id}`, {

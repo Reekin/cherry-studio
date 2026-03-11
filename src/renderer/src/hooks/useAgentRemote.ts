@@ -10,8 +10,16 @@ export interface AgentRemoteRendererStatus {
   lastError?: string
 }
 
+export interface AgentRemoteRendererEvent {
+  event: 'bridge.online' | 'bridge.offline' | 'session.pushed' | 'session.version.bump'
+  payload: Record<string, unknown>
+  ts: number
+}
+
 const statusCallbacks = new Set<(status: AgentRemoteRendererStatus) => void>()
+const eventCallbacks = new Set<(event: AgentRemoteRendererEvent) => void>()
 let removeIpcListener: (() => void) | null = null
+let removeIpcEventListener: (() => void) | null = null
 
 const ensureSubscribed = () => {
   if (!removeIpcListener) {
@@ -19,12 +27,23 @@ const ensureSubscribed = () => {
       statusCallbacks.forEach((callback) => callback(status))
     })
   }
+
+  if (!removeIpcEventListener) {
+    removeIpcEventListener = window.api.agentRemote.onEventPublished((event) => {
+      eventCallbacks.forEach((callback) => callback(event))
+    })
+  }
 }
 
 const cleanupSubscription = () => {
-  if (statusCallbacks.size === 0 && removeIpcListener) {
+  if (statusCallbacks.size === 0 && eventCallbacks.size === 0 && removeIpcListener) {
     removeIpcListener()
     removeIpcListener = null
+  }
+
+  if (statusCallbacks.size === 0 && eventCallbacks.size === 0 && removeIpcEventListener) {
+    removeIpcEventListener()
+    removeIpcEventListener = null
   }
 }
 
@@ -39,6 +58,7 @@ const emptyStatus: AgentRemoteRendererStatus = {
 
 export function useAgentRemote() {
   const [status, setStatus] = useState<AgentRemoteRendererStatus>(emptyStatus)
+  const [lastEvent, setLastEvent] = useState<AgentRemoteRendererEvent | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const loadStatusRef = useRef<() => Promise<void>>(async () => {})
 
@@ -64,10 +84,15 @@ export function useAgentRemote() {
       setStatus(nextStatus)
       setIsLoading(false)
     }
+    const handleEventPublished = (event: AgentRemoteRendererEvent) => {
+      setLastEvent(event)
+    }
 
     statusCallbacks.add(handleStatusChanged)
+    eventCallbacks.add(handleEventPublished)
     return () => {
       statusCallbacks.delete(handleStatusChanged)
+      eventCallbacks.delete(handleEventPublished)
       cleanupSubscription()
     }
   }, [])
@@ -82,6 +107,7 @@ export function useAgentRemote() {
 
   return {
     status,
+    lastEvent,
     isLoading,
     pushSession,
     refresh

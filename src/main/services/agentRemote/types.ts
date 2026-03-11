@@ -52,6 +52,12 @@ export interface BridgePresencePayload {
   status: 'online' | 'offline'
 }
 
+export interface AgentRemotePublishedEvent {
+  event: 'bridge.online' | 'bridge.offline' | 'session.pushed' | 'session.version.bump'
+  payload: SessionPushedPayload | SessionVersionBumpPayload | BridgePresencePayload
+  ts: number
+}
+
 export interface AgentRemoteStatus {
   enabled: boolean
   relayUrl: string | null

@@ -9,6 +9,7 @@ import { SnapshotProvider } from './SnapshotProvider'
 import { SseEventAdapter } from './SseEventAdapter'
 import type {
   AgentRemoteConfig,
+  AgentRemotePublishedEvent,
   AgentRemoteStatus,
   PushSessionInput,
   RegisterDesktopRunInput,
@@ -22,6 +23,7 @@ const logger = loggerService.withContext('AgentRemoteService')
 export class AgentRemoteService {
   private static instance: AgentRemoteService | null = null
   private readonly listeners = new Set<(status: AgentRemoteStatus) => void>()
+  private readonly publishedEventListeners = new Set<(event: AgentRemotePublishedEvent) => void>()
 
   private readonly config: AgentRemoteConfig
   private readonly socketClient: BridgeSocketClient
@@ -42,7 +44,9 @@ export class AgentRemoteService {
   private constructor(config: AgentRemoteConfig) {
     this.config = config
     this.socketClient = new BridgeSocketClient(config)
-    this.eventPublisher = new EventPublisher(this.socketClient, config.deviceId)
+    this.eventPublisher = new EventPublisher(this.socketClient, config.deviceId, (event) =>
+      this.emitPublishedEvent(event)
+    )
     this.runRegistrationService = new RunRegistrationService(this.socketClient, config.deviceId)
     this.sseEventAdapter = new SseEventAdapter()
     this.snapshotProvider = new SnapshotProvider()
@@ -157,6 +161,13 @@ export class AgentRemoteService {
     }
   }
 
+  subscribePublishedEvents(listener: (event: AgentRemotePublishedEvent) => void): () => void {
+    this.publishedEventListeners.add(listener)
+    return () => {
+      this.publishedEventListeners.delete(listener)
+    }
+  }
+
   private async handleIncomingEnvelope(envelope: RemoteEnvelope): Promise<void> {
     if (envelope.type !== 'cmd') {
       return
@@ -185,6 +196,12 @@ export class AgentRemoteService {
 
     for (const listener of this.listeners) {
       listener(this.status)
+    }
+  }
+
+  private emitPublishedEvent(event: AgentRemotePublishedEvent): void {
+    for (const listener of this.publishedEventListeners) {
+      listener(event)
     }
   }
 }

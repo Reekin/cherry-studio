@@ -26,14 +26,14 @@ export class SnapshotProvider {
     try {
       const history = await agentMessageRepository.getSessionHistory(sessionId)
       const messages = history.map((message, index) => this.toSnapshotMessage(message, index))
-      const updatedAt = Date.now()
+      const updatedAt = messages.reduce((latest, message) => Math.max(latest, message.updatedAt ?? 0), 0)
 
       return {
         sessionId,
         snapshotVersion: messages.length,
         snapshotSeqCeiling,
         messages,
-        updatedAt
+        updatedAt: updatedAt || Date.now()
       }
     } catch (error) {
       logger.error('Failed to build session snapshot', {
@@ -50,9 +50,11 @@ export class SnapshotProvider {
 
     return {
       messageId,
+      runId: typeof message?.message?.traceId === 'string' ? message.message.traceId : undefined,
       role,
       content: this.extractContent(message),
-      status: 'done'
+      status: this.normalizeStatus(message?.message?.status),
+      updatedAt: this.parseTimestamp(message?.message?.updatedAt ?? message?.message?.createdAt)
     }
   }
 
@@ -66,6 +68,28 @@ export class SnapshotProvider {
       default:
         return 'assistant'
     }
+  }
+
+  private normalizeStatus(status: string | undefined): SessionSnapshotMessage['status'] {
+    switch (status) {
+      case 'processing':
+      case 'pending':
+      case 'searching':
+        return 'streaming'
+      case 'error':
+        return 'error'
+      default:
+        return 'done'
+    }
+  }
+
+  private parseTimestamp(value: string | undefined): number | undefined {
+    if (!value) {
+      return undefined
+    }
+
+    const timestamp = Date.parse(value)
+    return Number.isFinite(timestamp) ? timestamp : undefined
   }
 
   private extractContent(message: AgentPersistedMessage | undefined): string {

@@ -643,6 +643,20 @@ const api = {
     }> => ipcRenderer.invoke(IpcChannel.AgentRemote_GetStatus),
     pushSession: (payload: { sessionId: string; agentId: string }): Promise<boolean> =>
       ipcRenderer.invoke(IpcChannel.AgentRemote_PushSession, payload),
+    onEventPublished: (
+      callback: (event: {
+        event: 'bridge.online' | 'bridge.offline' | 'session.pushed' | 'session.version.bump'
+        payload: Record<string, unknown>
+        ts: number
+      }) => void
+    ): (() => void) => {
+      const channel = IpcChannel.AgentRemote_EventPublished
+      const listener = (_: Electron.IpcRendererEvent, event: any) => callback(event)
+      ipcRenderer.on(channel, listener)
+      return () => {
+        ipcRenderer.removeListener(channel, listener)
+      }
+    },
     onStatusChanged: (
       callback: (status: {
         enabled: boolean

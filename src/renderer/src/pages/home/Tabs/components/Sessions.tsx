@@ -1,6 +1,7 @@
 import { DynamicVirtualList, type DynamicVirtualListRef } from '@renderer/components/VirtualList'
 import { useCreateDefaultSession } from '@renderer/hooks/agents/useCreateDefaultSession'
 import { useSessions } from '@renderer/hooks/agents/useSessions'
+import { useAgentRemote } from '@renderer/hooks/useAgentRemote'
 import { useRuntime } from '@renderer/hooks/useRuntime'
 import { useAppDispatch } from '@renderer/store'
 import { newMessagesActions } from '@renderer/store/newMessage'
@@ -28,6 +29,7 @@ const Sessions: React.FC<SessionsProps> = ({ agentId }) => {
   const { t } = useTranslation()
   const { sessions, isLoading, error, deleteSession, hasMore, loadMore, isLoadingMore, isValidating, reload } =
     useSessions(agentId)
+  const { lastEvent: lastRemoteEvent } = useAgentRemote()
   const { chat } = useRuntime()
   const { activeSessionIdMap } = chat
   const dispatch = useAppDispatch()
@@ -119,6 +121,20 @@ const Sessions: React.FC<SessionsProps> = ({ agentId }) => {
       )
     }
   }, [activeSessionId, dispatch])
+
+  useEffect(() => {
+    if (!lastRemoteEvent) {
+      return
+    }
+
+    if (
+      lastRemoteEvent.event === 'bridge.online' ||
+      lastRemoteEvent.event === 'bridge.offline' ||
+      lastRemoteEvent.event === 'session.version.bump'
+    ) {
+      void reload()
+    }
+  }, [lastRemoteEvent, reload])
 
   if (isLoading) {
     return (
