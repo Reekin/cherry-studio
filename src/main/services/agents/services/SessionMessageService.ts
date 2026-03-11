@@ -165,9 +165,12 @@ export class SessionMessageService extends BaseService {
     logger.debug('Session Message stream message data:', { message: req, session_id: agentSessionId })
 
     if (session.agent_type !== 'claude-code') {
-      // TODO: Implement support for other agent types
-      logger.error('Unsupported agent type for streaming:', { agent_type: session.agent_type })
-      throw new Error('Unsupported agent type for streaming')
+      logger.error('Agent provider is not implemented for session streaming', { agent_type: session.agent_type })
+      throw new Error(
+        session.agent_type === 'codex'
+          ? 'Codex provider is not implemented yet'
+          : 'Unsupported agent type for streaming'
+      )
     }
 
     const claudeStream = await this.cc.invoke(req.content, session, abortController, agentSessionId, {

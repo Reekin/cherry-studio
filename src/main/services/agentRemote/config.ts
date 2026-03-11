@@ -1,3 +1,4 @@
+import { configManager } from '../ConfigManager'
 import type { AgentRemoteConfig } from './types'
 
 const DEFAULT_HEARTBEAT_INTERVAL_MS = 20_000
@@ -5,22 +6,6 @@ const DEFAULT_RECONNECT_INITIAL_DELAY_MS = 1_000
 const DEFAULT_RECONNECT_MAX_DELAY_MS = 30_000
 const DEFAULT_RECONNECT_BACKOFF_MULTIPLIER = 2
 const DEFAULT_CONNECT_TIMEOUT_MS = 10_000
-
-function parseBoolean(value: string | undefined, fallback: boolean): boolean {
-  if (value === undefined) {
-    return fallback
-  }
-
-  if (value === '1' || value.toLowerCase() === 'true') {
-    return true
-  }
-
-  if (value === '0' || value.toLowerCase() === 'false') {
-    return false
-  }
-
-  return fallback
-}
 
 function parseNumber(value: string | undefined, fallback: number): number {
   if (!value) {
@@ -32,10 +17,13 @@ function parseNumber(value: string | undefined, fallback: number): number {
 }
 
 export function createAgentRemoteConfig(overrides: Partial<AgentRemoteConfig> = {}): AgentRemoteConfig {
+  const relayUrl = overrides.relayUrl ?? configManager.getRemoteRelayUrl()
+  const authToken = overrides.authToken ?? configManager.getRemoteSharedKey()
+
   return {
-    enabled: overrides.enabled ?? parseBoolean(process.env.CHERRY_REMOTE_ENABLED, false),
-    relayUrl: overrides.relayUrl ?? process.env.CHERRY_REMOTE_RELAY_URL ?? null,
-    authToken: overrides.authToken ?? process.env.CHERRY_REMOTE_AUTH_TOKEN ?? null,
+    enabled: overrides.enabled ?? Boolean(relayUrl && authToken),
+    relayUrl,
+    authToken,
     deviceId: overrides.deviceId ?? process.env.CHERRY_REMOTE_DEVICE_ID ?? `desktop-${process.pid}`,
     clientId: overrides.clientId ?? process.env.CHERRY_REMOTE_CLIENT_ID ?? 'cherry-studio-desktop',
     heartbeatIntervalMs:

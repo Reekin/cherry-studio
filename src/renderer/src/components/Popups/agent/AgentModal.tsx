@@ -2,7 +2,7 @@ import { loggerService } from '@logger'
 import { ErrorBoundary } from '@renderer/components/ErrorBoundary'
 import { HelpTooltip } from '@renderer/components/TooltipIcons'
 import { TopView } from '@renderer/components/TopView'
-import { permissionModeCards } from '@renderer/config/agent'
+import { agentProviderOptions, permissionModeCards } from '@renderer/config/agent'
 import { isWin } from '@renderer/config/constant'
 import { useAgents } from '@renderer/hooks/agents/useAgents'
 import { useUpdateAgent } from '@renderer/hooks/agents/useUpdateAgent'
@@ -145,6 +145,13 @@ const PopupContainer: React.FC<Props> = ({ agent, afterSubmit, resolve }) => {
     })
   }, [])
 
+  const onProviderChange = useCallback((value: BaseAgentForm['type']) => {
+    setForm((prev) => ({
+      ...prev,
+      type: value
+    }))
+  }, [])
+
   const onNameChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
     setForm((prev) => ({
       ...prev,
@@ -260,6 +267,7 @@ const PopupContainer: React.FC<Props> = ({ agent, afterSubmit, resolve }) => {
 
         const updatePayload = {
           id: agent.id,
+          type: form.type,
           name: form.name,
           description: form.description,
           instructions: form.instructions,
@@ -339,6 +347,29 @@ const PopupContainer: React.FC<Props> = ({ agent, afterSubmit, resolve }) => {
                 <Input value={form.name} onChange={onNameChange} required />
               </FormItem>
             </FormRow>
+
+            <FormItem>
+              <Label>
+                {t('agent.provider.label', { defaultValue: 'Provider' })} <RequiredMark>*</RequiredMark>
+              </Label>
+              <Select value={form.type} onChange={onProviderChange} style={{ width: '100%' }}>
+                {agentProviderOptions.map((option) => (
+                  <Select.Option key={option.value} value={option.value} label={option.label}>
+                    <PermissionOptionWrapper>
+                      <div className="title">{option.label}</div>
+                      <div className="description">{option.description}</div>
+                    </PermissionOptionWrapper>
+                  </Select.Option>
+                ))}
+              </Select>
+              {form.type === 'codex' && (
+                <HelpText>
+                  {t('agent.provider.codex.placeholder', {
+                    defaultValue: 'Codex can be selected for new agents, but message execution is not implemented yet.'
+                  })}
+                </HelpText>
+              )}
+            </FormItem>
 
             <FormItem>
               <div className="flex items-center gap-2">

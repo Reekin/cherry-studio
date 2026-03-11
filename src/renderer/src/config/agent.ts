@@ -12,14 +12,33 @@ export const DEFAULT_CLAUDE_CODE_CONFIG: Omit<AgentBase, 'model'> = {
   ...DEFAULT_AGENT_CONFIG
 } as const
 
+export const DEFAULT_CODEX_CONFIG: Omit<AgentBase, 'model'> = {
+  ...DEFAULT_AGENT_CONFIG
+} as const
+
 export const getAgentTypeAvatar = (type: AgentType): string => {
   switch (type) {
     case 'claude-code':
       return ClaudeAvatar
+    case 'codex':
+      return ''
     default:
       return ''
   }
 }
+
+export const agentProviderOptions: Array<{ value: AgentType; label: string; description: string }> = [
+  {
+    value: 'claude-code',
+    label: 'Claude Code',
+    description: 'Use Claude Code as the execution provider for new sessions.'
+  },
+  {
+    value: 'codex',
+    label: 'Codex',
+    description: 'Reserved provider slot for Codex. Execution is not implemented yet.'
+  }
+]
 
 export const permissionModeCards: PermissionModeCard[] = [
   {

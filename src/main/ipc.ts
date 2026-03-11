@@ -338,6 +338,11 @@ export async function registerIpc(mainWindow: BrowserWindow, app: Electron.App) 
 
   ipcMain.handle(IpcChannel.Config_Set, (_, key: string, value: any, isNotify: boolean = false) => {
     configManager.set(key, value, isNotify)
+    if (key === ConfigKeys.RemoteRelayUrl || key === ConfigKeys.RemoteSharedKey) {
+      return agentRemoteService.reloadConfig()
+    }
+
+    return null
   })
 
   ipcMain.handle(IpcChannel.Config_Get, (_, key: string) => {

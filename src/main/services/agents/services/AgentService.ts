@@ -155,6 +155,7 @@ export class AgentService extends BaseService {
       updates.accessible_paths = this.resolveAccessiblePaths(updates.accessible_paths, id)
     }
 
+    const nextAgentType = updates.type ?? existing.type
     const modelUpdates: Partial<Record<AgentModelField, string | undefined>> = {}
     for (const field of this.modelFields) {
       if (Object.prototype.hasOwnProperty.call(updates, field)) {
@@ -163,7 +164,7 @@ export class AgentService extends BaseService {
     }
 
     if (Object.keys(modelUpdates).length > 0) {
-      await this.validateAgentModels(existing.type, modelUpdates)
+      await this.validateAgentModels(nextAgentType, modelUpdates)
     }
 
     const serializedUpdates = this.serializeJsonFields(updates)
@@ -183,6 +184,10 @@ export class AgentService extends BaseService {
           ;(updateData as Record<string, unknown>)[field] = null
         }
       }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(updates, 'type')) {
+      updateData.type = nextAgentType
     }
 
     const database = await this.getDatabase()

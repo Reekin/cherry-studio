@@ -374,6 +374,8 @@ export const getAgentTypeLabel = (key: AgentType) => {
   switch (key) {
     case 'claude-code':
       return 'Claude Code'
+    case 'codex':
+      return 'Codex'
     default:
       return 'Unknown Type'
   }

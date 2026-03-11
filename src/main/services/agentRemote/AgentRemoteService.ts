@@ -148,6 +148,36 @@ export class AgentRemoteService {
     return this.config
   }
 
+  reloadConfig(nextConfig: Partial<AgentRemoteConfig> = {}): AgentRemoteStatus {
+    const resolvedConfig = createAgentRemoteConfig({
+      ...this.config,
+      ...nextConfig
+    })
+
+    this.config.enabled = resolvedConfig.enabled
+    this.config.relayUrl = resolvedConfig.relayUrl
+    this.config.authToken = resolvedConfig.authToken
+    this.config.heartbeatIntervalMs = resolvedConfig.heartbeatIntervalMs
+    this.config.reconnectInitialDelayMs = resolvedConfig.reconnectInitialDelayMs
+    this.config.reconnectMaxDelayMs = resolvedConfig.reconnectMaxDelayMs
+    this.config.reconnectBackoffMultiplier = resolvedConfig.reconnectBackoffMultiplier
+    this.config.connectTimeoutMs = resolvedConfig.connectTimeoutMs
+
+    this.updateStatus({
+      enabled: resolvedConfig.enabled,
+      relayUrl: resolvedConfig.relayUrl,
+      lastError: undefined
+    })
+
+    this.stop('config_reload')
+
+    if (resolvedConfig.enabled) {
+      this.start()
+    }
+
+    return this.status
+  }
+
   getStatus(): AgentRemoteStatus {
     return this.status
   }

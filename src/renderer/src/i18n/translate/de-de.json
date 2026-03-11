@@ -77,6 +77,16 @@
         "failed": "Agent-Liste abrufen fehlgeschlagen"
       }
     },
+    "remote": {
+      "push_failed": "Failed to push session to iOS.",
+      "push_pending": "Relay is offline, session push was not accepted.",
+      "push_success": "Session pushed to iOS queue.",
+      "push_to_ios": "Push to iOS",
+      "status": {
+        "ios_linked": "iOS linked",
+        "relay_offline": "Relay offline"
+      }
+    },
     "server": {
       "error": {
         "not_running": "API server is enabled but not running properly."
@@ -389,16 +399,6 @@
     },
     "warning": {
       "enable_server": "Bitte aktivieren Sie den API-Server, um Agent-Funktionen zu verwenden"
-    },
-    "remote": {
-      "push_to_ios": "Push to iOS",
-      "push_success": "Session pushed to iOS queue.",
-      "push_pending": "Relay is offline, session push was not accepted.",
-      "push_failed": "Failed to push session to iOS.",
-      "status": {
-        "ios_linked": "iOS linked",
-        "relay_offline": "Relay offline"
-      }
     }
   },
   "apiServer": {

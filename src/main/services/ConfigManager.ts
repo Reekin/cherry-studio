@@ -50,7 +50,9 @@ export enum ConfigKeys {
   EnableDeveloperMode = 'enableDeveloperMode',
   ClientId = 'clientId',
   GitBashPath = 'gitBashPath',
-  GitBashPathSource = 'gitBashPathSource' // 'manual' | 'auto' | null
+  GitBashPathSource = 'gitBashPathSource', // 'manual' | 'auto' | null
+  RemoteRelayUrl = 'remoteRelayUrl',
+  RemoteSharedKey = 'remoteSharedKey'
 }
 
 export class ConfigManager {
@@ -270,6 +272,22 @@ export class ConfigManager {
 
   setEnableDeveloperMode(value: boolean) {
     this.set(ConfigKeys.EnableDeveloperMode, value)
+  }
+
+  getRemoteRelayUrl(): string | null {
+    return this.get<string | null>(ConfigKeys.RemoteRelayUrl, null)
+  }
+
+  setRemoteRelayUrl(value: string | null) {
+    this.set(ConfigKeys.RemoteRelayUrl, value)
+  }
+
+  getRemoteSharedKey(): string | null {
+    return this.get<string | null>(ConfigKeys.RemoteSharedKey, null)
+  }
+
+  setRemoteSharedKey(value: string | null) {
+    this.set(ConfigKeys.RemoteSharedKey, value)
   }
 
   getClientId(): string {

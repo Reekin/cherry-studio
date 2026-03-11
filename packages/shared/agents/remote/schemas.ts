@@ -16,6 +16,9 @@ export type RemoteOrigin = z.infer<typeof remoteOriginSchema>
 export const remoteRunPushPolicySchema = z.enum(remoteRunPushPolicies)
 export type RemoteRunPushPolicy = z.infer<typeof remoteRunPushPolicySchema>
 
+export const remoteAgentProviderSchema = z.enum(['claude-code', 'codex'])
+export type RemoteAgentProvider = z.infer<typeof remoteAgentProviderSchema>
+
 export const remoteEnvelopeTypeSchema = z.enum(remoteEnvelopeTypes)
 export type RemoteEnvelopeType = z.infer<typeof remoteEnvelopeTypeSchema>
 
@@ -30,6 +33,9 @@ export type RemoteAckEvent = z.infer<typeof remoteAckEventSchema>
 
 export const remoteErrorCodeSchema = z.enum(remoteErrorCodes)
 export type RemoteErrorCode = z.infer<typeof remoteErrorCodeSchema>
+
+export const remoteAgentPermissionModeSchema = z.enum(['default', 'acceptEdits', 'bypassPermissions', 'plan'])
+export type RemoteAgentPermissionMode = z.infer<typeof remoteAgentPermissionModeSchema>
 
 const remoteBaseEnvelopeSchema = z.object({
   type: remoteEnvelopeTypeSchema,
@@ -48,6 +54,31 @@ export const runRegisterPayloadSchema = z.object({
   deviceId: z.string().min(1)
 })
 export type RunRegisterPayload = z.infer<typeof runRegisterPayloadSchema>
+
+export const remoteAgentSchema = z.object({
+  agentId: z.string().min(1),
+  name: z.string().min(1),
+  prompt: z.string().default(''),
+  directories: z.array(z.string()).default([]),
+  provider: remoteAgentProviderSchema,
+  permissionMode: remoteAgentPermissionModeSchema.default('bypassPermissions'),
+  createdAt: z.number().int().nonnegative().optional(),
+  updatedAt: z.number().int().nonnegative().optional()
+})
+export type RemoteAgent = z.infer<typeof remoteAgentSchema>
+
+export const agentListPayloadSchema = z.object({}).passthrough()
+export type AgentListPayload = z.infer<typeof agentListPayloadSchema>
+
+export const agentUpsertPayloadSchema = remoteAgentSchema.extend({
+  agentId: z.string().min(1).optional()
+})
+export type AgentUpsertPayload = z.infer<typeof agentUpsertPayloadSchema>
+
+export const agentDeletePayloadSchema = z.object({
+  agentId: z.string().min(1)
+})
+export type AgentDeletePayload = z.infer<typeof agentDeletePayloadSchema>
 
 export const sessionCreatePayloadSchema = z.object({
   agentId: z.string().min(1),
@@ -90,6 +121,21 @@ export const sessionCreatedPayloadSchema = z.object({
   runPushPolicy: remoteRunPushPolicySchema.optional()
 })
 export type SessionCreatedPayload = z.infer<typeof sessionCreatedPayloadSchema>
+
+export const agentListedPayloadSchema = z.object({
+  agents: z.array(remoteAgentSchema).default([])
+})
+export type AgentListedPayload = z.infer<typeof agentListedPayloadSchema>
+
+export const agentUpsertedPayloadSchema = z.object({
+  agent: remoteAgentSchema
+})
+export type AgentUpsertedPayload = z.infer<typeof agentUpsertedPayloadSchema>
+
+export const agentDeletedPayloadSchema = z.object({
+  agentId: z.string().min(1)
+})
+export type AgentDeletedPayload = z.infer<typeof agentDeletedPayloadSchema>
 
 export const sessionPushedPayloadSchema = z.object({
   sessionId: z.string().min(1),
@@ -181,6 +227,21 @@ export const remoteCmdEnvelopeSchema = z.discriminatedUnion('event', [
   }),
   remoteBaseEnvelopeSchema.extend({
     type: z.literal('cmd'),
+    event: z.literal('agent.list'),
+    payload: agentListPayloadSchema
+  }),
+  remoteBaseEnvelopeSchema.extend({
+    type: z.literal('cmd'),
+    event: z.literal('agent.upsert'),
+    payload: agentUpsertPayloadSchema
+  }),
+  remoteBaseEnvelopeSchema.extend({
+    type: z.literal('cmd'),
+    event: z.literal('agent.delete'),
+    payload: agentDeletePayloadSchema
+  }),
+  remoteBaseEnvelopeSchema.extend({
+    type: z.literal('cmd'),
     event: z.literal('session.create'),
     payload: sessionCreatePayloadSchema
   }),
@@ -193,11 +254,6 @@ export const remoteCmdEnvelopeSchema = z.discriminatedUnion('event', [
     type: z.literal('cmd'),
     event: z.literal('session.snapshot'),
     payload: sessionSnapshotPayloadSchema
-  }),
-  remoteBaseEnvelopeSchema.extend({
-    type: z.literal('cmd'),
-    event: z.literal('agent.list'),
-    payload: z.object({}).passthrough()
   }),
   remoteBaseEnvelopeSchema.extend({
     type: z.literal('cmd'),
@@ -215,6 +271,21 @@ export const remoteCmdEnvelopeSchema = z.discriminatedUnion('event', [
 export type RemoteCmdEnvelope = z.infer<typeof remoteCmdEnvelopeSchema>
 
 export const remoteEvtEnvelopeSchema = z.discriminatedUnion('event', [
+  remoteBaseEnvelopeSchema.extend({
+    type: z.literal('evt'),
+    event: z.literal('agent.listed'),
+    payload: agentListedPayloadSchema
+  }),
+  remoteBaseEnvelopeSchema.extend({
+    type: z.literal('evt'),
+    event: z.literal('agent.upserted'),
+    payload: agentUpsertedPayloadSchema
+  }),
+  remoteBaseEnvelopeSchema.extend({
+    type: z.literal('evt'),
+    event: z.literal('agent.deleted'),
+    payload: agentDeletedPayloadSchema
+  }),
   remoteBaseEnvelopeSchema.extend({
     type: z.literal('evt'),
     event: z.literal('session.created'),

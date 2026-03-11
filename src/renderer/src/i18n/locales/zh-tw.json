@@ -77,6 +77,16 @@
         "failed": "無法列出 Agent。"
       }
     },
+    "remote": {
+      "push_failed": "推送工作階段到 iOS 失敗。",
+      "push_pending": "Relay 目前離線，工作階段推送未被接受。",
+      "push_success": "工作階段已推送到 iOS 佇列。",
+      "push_to_ios": "推送到 iOS",
+      "status": {
+        "ios_linked": "iOS 已連線",
+        "relay_offline": "Relay 離線"
+      }
+    },
     "server": {
       "error": {
         "not_running": "API 伺服器已啟用，但運作不正常。"
@@ -381,16 +391,6 @@
     "type": {
       "label": "Agent 類型",
       "unknown": "未知類型"
-    },
-    "remote": {
-      "push_to_ios": "推送到 iOS",
-      "push_success": "工作階段已推送到 iOS 佇列。",
-      "push_pending": "Relay 目前離線，工作階段推送未被接受。",
-      "push_failed": "推送工作階段到 iOS 失敗。",
-      "status": {
-        "ios_linked": "iOS 已連線",
-        "relay_offline": "Relay 離線"
-      }
     },
     "update": {
       "error": {

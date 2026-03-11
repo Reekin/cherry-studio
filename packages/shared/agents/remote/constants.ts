@@ -6,6 +6,8 @@ export const remoteEnvelopeTypes = ['cmd', 'evt', 'ack', 'err'] as const
 
 export const remoteCommandEvents = [
   'agent.list',
+  'agent.upsert',
+  'agent.delete',
   'session.list',
   'session.create',
   'message.send',
@@ -15,6 +17,9 @@ export const remoteCommandEvents = [
 ] as const
 
 export const remoteEventEvents = [
+  'agent.listed',
+  'agent.upserted',
+  'agent.deleted',
   'session.created',
   'session.pushed',
   'session.snapshot',

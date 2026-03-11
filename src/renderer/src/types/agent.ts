@@ -25,7 +25,7 @@ export const SessionMessageRoleSchema = z.enum(sessionMessageRoles)
 
 export type SessionMessageType = TextStreamPart<Record<string, any>>['type']
 
-export const AgentTypeSchema = z.enum(['claude-code'])
+export const AgentTypeSchema = z.enum(['claude-code', 'codex'])
 export type AgentType = z.infer<typeof AgentTypeSchema>
 
 export const isAgentType = (type: unknown): type is AgentType => {
@@ -211,9 +211,8 @@ export type BaseAgentForm = {
 
 export type AddAgentForm = Omit<BaseAgentForm, 'id'> & { id?: never }
 
-export type UpdateAgentForm = Partial<Omit<BaseAgentForm, 'type'>> & {
+export type UpdateAgentForm = Partial<BaseAgentForm> & {
   id: string
-  type?: never
 }
 
 export type AgentForm = AddAgentForm | UpdateAgentForm
@@ -256,7 +255,9 @@ export const CreateAgentResponseSchema = AgentEntitySchema
 
 export type CreateAgentResponse = AgentEntity
 
-export interface UpdateAgentRequest extends Partial<AgentBase> {}
+export interface UpdateAgentRequest extends Partial<AgentBase> {
+  type?: AgentType
+}
 
 export type ReplaceAgentRequest = AgentBase
 
@@ -359,7 +360,9 @@ export const CreateAgentRequestSchema = agentCreatableSchema.extend({
   type: AgentTypeSchema
 })
 
-export const UpdateAgentRequestSchema = AgentBaseSchema.partial()
+export const UpdateAgentRequestSchema = AgentBaseSchema.partial().extend({
+  type: AgentTypeSchema.optional()
+})
 
 export const ReplaceAgentRequestSchema = AgentBaseSchema
 

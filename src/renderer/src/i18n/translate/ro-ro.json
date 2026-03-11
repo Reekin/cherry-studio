@@ -77,6 +77,16 @@
         "failed": "Nu s-a putut afișa lista de agenți."
       }
     },
+    "remote": {
+      "push_failed": "Failed to push session to iOS.",
+      "push_pending": "Relay is offline, session push was not accepted.",
+      "push_success": "Session pushed to iOS queue.",
+      "push_to_ios": "Push to iOS",
+      "status": {
+        "ios_linked": "iOS linked",
+        "relay_offline": "Relay offline"
+      }
+    },
     "server": {
       "error": {
         "not_running": "Serverul API este activat, dar nu rulează corect."
@@ -389,16 +399,6 @@
     },
     "warning": {
       "enable_server": "Activează serverul API pentru a folosi agenți."
-    },
-    "remote": {
-      "push_to_ios": "Push to iOS",
-      "push_success": "Session pushed to iOS queue.",
-      "push_pending": "Relay is offline, session push was not accepted.",
-      "push_failed": "Failed to push session to iOS.",
-      "status": {
-        "ios_linked": "iOS linked",
-        "relay_offline": "Relay offline"
-      }
     }
   },
   "apiServer": {

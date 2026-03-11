@@ -1,9 +1,16 @@
 import { randomUUID } from 'node:crypto'
 
 import { loggerService } from '@logger'
-import { sessionMessageService, sessionService } from '@main/services/agents'
+import { agentService, sessionMessageService, sessionService } from '@main/services/agents'
 import { agentMessageRepository } from '@main/services/agents/database'
-import type { AgentPersistedMessage, GetAgentSessionResponse } from '@types'
+import type {
+  AgentEntity,
+  AgentPersistedMessage,
+  CreateAgentRequest,
+  GetAgentSessionResponse,
+  UpdateAgentRequest
+} from '@types'
+import { AgentConfigurationSchema } from '@types'
 
 import { EventPublisher } from './EventPublisher'
 import { SnapshotProvider } from './SnapshotProvider'
@@ -43,6 +50,12 @@ export class CommandExecutionService {
 
   async executeCommand(envelope: RemoteCommandEnvelope): Promise<CommandExecutionResult> {
     switch (envelope.event) {
+      case 'agent.list':
+        return this.handleListAgents(envelope)
+      case 'agent.upsert':
+        return this.handleUpsertAgent(envelope)
+      case 'agent.delete':
+        return this.handleDeleteAgent(envelope)
       case 'session.create':
         return this.handleCreateSession(envelope)
       case 'message.send':
@@ -69,6 +82,152 @@ export class CommandExecutionService {
                 : undefined
           })
         }
+    }
+  }
+
+  private async handleListAgents(envelope: Extract<RemoteCommandEnvelope, { event: 'agent.list' }>) {
+    try {
+      const { agents } = await agentService.listAgents()
+      const responseEnvelope = createRemoteEventEnvelope(
+        'agent.listed',
+        {
+          agents: agents.map((agent) => this.toRemoteAgentPayload(agent))
+        },
+        {
+          requestId: envelope.requestId,
+          runId: envelope.runId
+        }
+      )
+
+      this.eventPublisher.publishEnvelope(responseEnvelope)
+
+      return {
+        accepted: true,
+        responseEnvelope
+      }
+    } catch (error) {
+      return {
+        accepted: false,
+        reason: 'agent_list_failed',
+        responseEnvelope: createRemoteErrorEnvelope(
+          'VALIDATION_FAILED',
+          error instanceof Error ? error.message : 'Failed to list remote agents',
+          {
+            requestId: envelope.requestId,
+            runId: envelope.runId
+          }
+        )
+      }
+    }
+  }
+
+  private async handleUpsertAgent(envelope: Extract<RemoteCommandEnvelope, { event: 'agent.upsert' }>) {
+    try {
+      const existingAgent = envelope.payload.agentId ? await agentService.getAgent(envelope.payload.agentId) : null
+      if (envelope.payload.agentId && !existingAgent) {
+        return {
+          accepted: false,
+          reason: 'agent_not_found',
+          responseEnvelope: createRemoteErrorEnvelope('VALIDATION_FAILED', 'Remote agent not found', {
+            requestId: envelope.requestId,
+            runId: envelope.runId
+          })
+        }
+      }
+
+      const payload = await this.buildAgentUpsertPayload(envelope.payload, existingAgent)
+      const agent = existingAgent
+        ? await agentService.updateAgent(existingAgent.id, payload as UpdateAgentRequest)
+        : await agentService.createAgent(payload as CreateAgentRequest)
+
+      if (!agent) {
+        return {
+          accepted: false,
+          reason: 'agent_upsert_failed',
+          responseEnvelope: createRemoteErrorEnvelope('VALIDATION_FAILED', 'Failed to save remote agent', {
+            requestId: envelope.requestId,
+            runId: envelope.runId
+          })
+        }
+      }
+
+      const responseEnvelope = createRemoteEventEnvelope(
+        'agent.upserted',
+        {
+          agent: this.toRemoteAgentPayload(agent)
+        },
+        {
+          requestId: envelope.requestId,
+          runId: envelope.runId
+        }
+      )
+
+      this.eventPublisher.publishEnvelope(responseEnvelope)
+
+      return {
+        accepted: true,
+        responseEnvelope
+      }
+    } catch (error) {
+      return {
+        accepted: false,
+        reason: 'agent_upsert_failed',
+        responseEnvelope: createRemoteErrorEnvelope(
+          'VALIDATION_FAILED',
+          error instanceof Error ? error.message : 'Failed to save remote agent',
+          {
+            requestId: envelope.requestId,
+            runId: envelope.runId
+          }
+        )
+      }
+    }
+  }
+
+  private async handleDeleteAgent(envelope: Extract<RemoteCommandEnvelope, { event: 'agent.delete' }>) {
+    try {
+      const deleted = await agentService.deleteAgent(envelope.payload.agentId)
+      if (!deleted) {
+        return {
+          accepted: false,
+          reason: 'agent_delete_failed',
+          responseEnvelope: createRemoteErrorEnvelope('VALIDATION_FAILED', 'Remote agent not found', {
+            requestId: envelope.requestId,
+            runId: envelope.runId
+          })
+        }
+      }
+
+      const responseEnvelope = createRemoteEventEnvelope(
+        'agent.deleted',
+        {
+          agentId: envelope.payload.agentId
+        },
+        {
+          requestId: envelope.requestId,
+          runId: envelope.runId
+        }
+      )
+
+      this.eventPublisher.publishEnvelope(responseEnvelope)
+
+      return {
+        accepted: true,
+        responseEnvelope
+      }
+    } catch (error) {
+      return {
+        accepted: false,
+        reason: 'agent_delete_failed',
+        responseEnvelope: createRemoteErrorEnvelope(
+          'VALIDATION_FAILED',
+          error instanceof Error ? error.message : 'Failed to delete remote agent',
+          {
+            requestId: envelope.requestId,
+            runId: envelope.runId
+          }
+        )
+      }
     }
   }
 
@@ -487,5 +646,83 @@ export class CommandExecutionService {
       status: overrides.status,
       error: overrides.error
     } as PersistedRemoteBlock
+  }
+
+  private toRemoteAgentPayload(agent: AgentEntity) {
+    return {
+      agentId: agent.id,
+      name: agent.name ?? 'Agent',
+      prompt: agent.instructions ?? '',
+      directories: agent.accessible_paths ?? [],
+      provider: agent.type,
+      permissionMode: agent.configuration?.permission_mode ?? 'bypassPermissions',
+      createdAt: Date.parse(agent.created_at),
+      updatedAt: Date.parse(agent.updated_at)
+    } as const
+  }
+
+  private async buildAgentUpsertPayload(
+    payload: Extract<RemoteCommandEnvelope, { event: 'agent.upsert' }>['payload'],
+    existingAgent: Awaited<ReturnType<typeof agentService.getAgent>>
+  ): Promise<CreateAgentRequest | UpdateAgentRequest> {
+    const type = payload.provider
+    const model = this.resolveAgentModel(type, existingAgent?.model)
+
+    const basePayload = {
+      type,
+      name: payload.name.trim(),
+      instructions: payload.prompt,
+      accessible_paths: payload.directories,
+      configuration: AgentConfigurationSchema.parse({
+        ...(existingAgent?.configuration ?? {}),
+        permission_mode: payload.permissionMode
+      }),
+      model: model ?? (await this.resolveDefaultModel(type))
+    }
+
+    if (existingAgent) {
+      return {
+        ...basePayload,
+        model: model ?? existingAgent.model
+      }
+    }
+
+    return {
+      ...basePayload,
+      model: basePayload.model
+    }
+  }
+
+  private resolveAgentModel(
+    provider: Extract<RemoteCommandEnvelope, { event: 'agent.upsert' }>['payload']['provider'],
+    existingModel?: string
+  ): string | undefined {
+    if (provider === 'codex') {
+      return existingModel ?? 'codex-placeholder'
+    }
+
+    if (existingModel && existingModel.trim().length > 0 && existingModel !== 'codex-placeholder') {
+      return existingModel
+    }
+
+    return undefined
+  }
+
+  private async resolveDefaultModel(
+    provider: Extract<RemoteCommandEnvelope, { event: 'agent.upsert' }>['payload']['provider']
+  ): Promise<string> {
+    if (provider === 'codex') {
+      return 'codex-placeholder'
+    }
+
+    const { getAvailableProviders } = await import('@main/apiServer/utils')
+    const providers = await getAvailableProviders()
+    const firstAvailableModel = providers.flatMap((item) => item.models ?? []).find((model) => model.id)
+
+    if (!firstAvailableModel) {
+      throw new Error('No enabled desktop model is available to create a remote agent')
+    }
+
+    return `${firstAvailableModel.provider}:${firstAvailableModel.id}`
   }
 }

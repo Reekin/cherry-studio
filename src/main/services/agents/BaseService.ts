@@ -281,6 +281,10 @@ export abstract class BaseService {
     agentType: AgentType,
     models: Partial<Record<AgentModelField, string | undefined>>
   ): Promise<void> {
+    if (agentType === 'codex') {
+      return
+    }
+
     const entries = Object.entries(models) as [AgentModelField, string | undefined][]
     if (entries.length === 0) {
       return
