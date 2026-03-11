@@ -53,7 +53,7 @@ const RemoteSettings = () => {
 
   const statusTag = useMemo(() => {
     if (!status.enabled) {
-      return <Tag>{t('settings.remote.status.disabled', { defaultValue: 'Disabled' })}</Tag>
+      return <Tag color="orange">{t('settings.remote.status.offline', { defaultValue: 'Offline' })}</Tag>
     }
 
     if (status.bridgeOnline) {
