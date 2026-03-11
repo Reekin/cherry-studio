@@ -34,6 +34,10 @@ function colorText(text: string, color: string) {
   return ANSICOLORS[color] + text + ANSICOLORS.END
 }
 
+function isBrokenPipeError(error: unknown) {
+  return error instanceof Error && 'code' in error && (error as NodeJS.ErrnoException).code === 'EPIPE'
+}
+
 const SYSTEM_INFO = {
   os: `${os.platform()}-${os.arch()} / ${os.version()}`,
   hw: `${os.cpus()[0]?.model || 'Unknown CPU'} / ${(os.totalmem() / 1024 / 1024 / 1024).toFixed(2)}GB`
@@ -51,6 +55,7 @@ const DEFAULT_LEVEL = isDev ? LEVEL.SILLY : LEVEL.INFO
 class LoggerService {
   private static instance: LoggerService
   private logger: winston.Logger
+  private consoleLoggingDisabled = false
 
   // env variables, only used in dev mode
   private envLevel: LogLevel = LEVEL.NONE
@@ -79,7 +84,10 @@ class LoggerService {
       ) {
         this.envLevel = process.env.CSLOGGER_MAIN_LEVEL as LogLevel
 
-        console.log(colorText(`[LoggerService] env CSLOGGER_MAIN_LEVEL loaded: ${this.envLevel}`, 'BLUE'))
+        this.safeConsoleCall(
+          console.log,
+          colorText(`[LoggerService] env CSLOGGER_MAIN_LEVEL loaded: ${this.envLevel}`, 'BLUE')
+        )
       }
 
       // load env show module if exists
@@ -90,7 +98,8 @@ class LoggerService {
         if (showModules.length > 0) {
           this.envShowModules = showModules
 
-          console.log(
+          this.safeConsoleCall(
+            console.log,
             colorText(`[LoggerService] env CSLOGGER_MAIN_SHOW_MODULES loaded: ${this.envShowModules.join(' ')}`, 'BLUE')
           )
         }
@@ -179,6 +188,23 @@ class LoggerService {
     this.logger.end()
   }
 
+  private safeConsoleCall(method: (...args: any[]) => void, ...args: any[]) {
+    if (this.consoleLoggingDisabled) {
+      return
+    }
+
+    try {
+      method(...args)
+    } catch (error) {
+      if (isBrokenPipeError(error)) {
+        this.consoleLoggingDisabled = true
+        return
+      }
+
+      throw error
+    }
+  }
+
   /**
    * Process and output log messages with source information
    * @param source - The log source with context
@@ -217,34 +243,46 @@ class LoggerService {
 
       switch (level) {
         case LEVEL.ERROR:
-          console.error(
+          this.safeConsoleCall(
+            console.error,
             `${datetimeColored} ${colorText(colorText('<ERROR>', 'RED'), 'BOLD')}${moduleString}${message}`,
             ...meta
           )
           break
         case LEVEL.WARN:
-          console.warn(
+          this.safeConsoleCall(
+            console.warn,
             `${datetimeColored} ${colorText(colorText('<WARN>', 'YELLOW'), 'BOLD')}${moduleString}${message}`,
             ...meta
           )
           break
         case LEVEL.INFO:
-          console.info(
+          this.safeConsoleCall(
+            console.info,
             `${datetimeColored} ${colorText(colorText('<INFO>', 'GREEN'), 'BOLD')}${moduleString}${message}`,
             ...meta
           )
           break
         case LEVEL.DEBUG:
-          console.debug(
+          this.safeConsoleCall(
+            console.debug,
             `${datetimeColored} ${colorText(colorText('<DEBUG>', 'BLUE'), 'BOLD')}${moduleString}${message}`,
             ...meta
           )
           break
         case LEVEL.VERBOSE:
-          console.log(`${datetimeColored} ${colorText('<VERBOSE>', 'BOLD')}${moduleString}${message}`, ...meta)
+          this.safeConsoleCall(
+            console.log,
+            `${datetimeColored} ${colorText('<VERBOSE>', 'BOLD')}${moduleString}${message}`,
+            ...meta
+          )
           break
         case LEVEL.SILLY:
-          console.log(`${datetimeColored} ${colorText('<SILLY>', 'BOLD')}${moduleString}${message}`, ...meta)
+          this.safeConsoleCall(
+            console.log,
+            `${datetimeColored} ${colorText('<SILLY>', 'BOLD')}${moduleString}${message}`,
+            ...meta
+          )
           break
       }
     }

@@ -382,6 +382,16 @@
       "label": "智能体类型",
       "unknown": "未知类型"
     },
+    "remote": {
+      "push_to_ios": "推送到 iOS",
+      "push_success": "会话已推送到 iOS 队列。",
+      "push_pending": "Relay 当前离线，会话推送未被接受。",
+      "push_failed": "推送会话到 iOS 失败。",
+      "status": {
+        "ios_linked": "iOS 已连接",
+        "relay_offline": "Relay 离线"
+      }
+    },
     "update": {
       "error": {
         "failed": "更新智能体失败"

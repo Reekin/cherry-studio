@@ -389,6 +389,16 @@
     },
     "warning": {
       "enable_server": "Bitte aktivieren Sie den API-Server, um Agent-Funktionen zu verwenden"
+    },
+    "remote": {
+      "push_to_ios": "Push to iOS",
+      "push_success": "Session pushed to iOS queue.",
+      "push_pending": "Relay is offline, session push was not accepted.",
+      "push_failed": "Failed to push session to iOS.",
+      "status": {
+        "ios_linked": "iOS linked",
+        "relay_offline": "Relay offline"
+      }
     }
   },
   "apiServer": {

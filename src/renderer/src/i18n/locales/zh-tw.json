@@ -382,6 +382,16 @@
       "label": "Agent 類型",
       "unknown": "未知類型"
     },
+    "remote": {
+      "push_to_ios": "推送到 iOS",
+      "push_success": "工作階段已推送到 iOS 佇列。",
+      "push_pending": "Relay 目前離線，工作階段推送未被接受。",
+      "push_failed": "推送工作階段到 iOS 失敗。",
+      "status": {
+        "ios_linked": "iOS 已連線",
+        "relay_offline": "Relay 離線"
+      }
+    },
     "update": {
       "error": {
         "failed": "無法更新 Agent"

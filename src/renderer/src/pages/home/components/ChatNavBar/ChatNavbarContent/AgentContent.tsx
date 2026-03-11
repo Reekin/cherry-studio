@@ -7,6 +7,7 @@ import { AgentLabel, SessionLabel } from '@renderer/pages/settings/AgentSettings
 import type { AgentEntity, ApiModel } from '@renderer/types'
 import { ChevronRight, Wifi, WifiOff } from 'lucide-react'
 import { useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import SelectAgentBaseModelButton from '../../SelectAgentBaseModelButton'
 import Tools from '../Tools'
@@ -18,6 +19,7 @@ type AgentContentProps = {
 }
 
 const AgentContent = ({ activeAgent }: AgentContentProps) => {
+  const { t } = useTranslation()
   const { session: activeSession } = useActiveSession()
   const { updateModel } = useUpdateSession(activeAgent?.id ?? null)
   const { status: remoteStatus } = useAgentRemote()
@@ -92,7 +94,11 @@ const AgentContent = ({ activeAgent }: AgentContentProps) => {
                       ) : (
                         <WifiOff className="h-3.5 w-3.5" />
                       )}
-                      <span>{remoteStatus.bridgeOnline ? 'iOS linked' : 'Relay offline'}</span>
+                      <span>
+                        {remoteStatus.bridgeOnline
+                          ? t('agent.remote.status.ios_linked', { defaultValue: 'iOS linked' })
+                          : t('agent.remote.status.relay_offline', { defaultValue: 'Relay offline' })}
+                      </span>
                     </div>
                   </>
                 )}
