@@ -209,6 +209,14 @@ export abstract class BaseService {
     }
   }
 
+  protected toPersistedModelValue(providerType: AgentType, model: string | null | undefined): string {
+    if (providerType === 'codex') {
+      return model ?? ''
+    }
+
+    return model ?? ''
+  }
+
   /**
    * Validate, normalize, and ensure filesystem access for a set of absolute paths.
    *

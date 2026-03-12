@@ -29,6 +29,10 @@ class TestBaseService extends BaseService {
       model
     })
   }
+
+  public persistedModelValue(agentType: 'claude-code' | 'codex', model: string | null | undefined): string {
+    return this.toPersistedModelValue(agentType, model)
+  }
 }
 
 const buildMcpTool = (id: string): Tool => ({
@@ -128,5 +132,11 @@ describe('BaseService provider metadata', () => {
 
     expect(claudeCommands.length).toBeGreaterThan(0)
     expect(codexCommands).toEqual([])
+  })
+
+  it('persists codex model as empty string instead of null', () => {
+    expect(service.persistedModelValue('codex', '')).toBe('')
+    expect(service.persistedModelValue('codex', null)).toBe('')
+    expect(service.persistedModelValue('codex', undefined)).toBe('')
   })
 })
