@@ -33,6 +33,15 @@ export class AiSdkToChunkAdapter {
   private hasTextContent = false
   private getSessionWasCleared?: () => boolean
 
+  private shouldAccumulateTextDelta(chunk: TextStreamPart<any>): boolean {
+    if (!('providerMetadata' in chunk)) {
+      return false
+    }
+
+    const providerMetadata = chunk.providerMetadata
+    return Boolean(providerMetadata && typeof providerMetadata === 'object' && 'codex' in providerMetadata)
+  }
+
   constructor(
     private onChunk: (chunk: Chunk) => void,
     mcpTools: MCPTool[] = [],
@@ -208,7 +217,9 @@ export class AiSdkToChunkAdapter {
           finalText = processedText
         }
 
-        if (this.accumulate) {
+        const shouldAccumulateText = this.accumulate || this.shouldAccumulateTextDelta(chunk)
+
+        if (shouldAccumulateText) {
           final.text += finalText
         } else {
           final.text = finalText
@@ -231,7 +242,7 @@ export class AiSdkToChunkAdapter {
           this.markFirstTokenIfNeeded()
           this.onChunk({
             type: ChunkType.TEXT_DELTA,
-            text: this.accumulate ? final.text : finalText,
+            text: shouldAccumulateText ? final.text : finalText,
             providerMetadata: final.providerMetadata
           })
         }

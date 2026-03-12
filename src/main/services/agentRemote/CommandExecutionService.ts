@@ -12,10 +12,10 @@ import type {
 } from '@types'
 import { AgentConfigurationSchema } from '@types'
 
-import { EventPublisher } from './EventPublisher'
+import type { EventPublisher } from './EventPublisher'
 import { RemoteMessageProjectionBuilder } from './RemoteMessageProjection'
-import { SnapshotProvider } from './SnapshotProvider'
-import { SseEventAdapter } from './SseEventAdapter'
+import type { SnapshotProvider } from './SnapshotProvider'
+import type { SseEventAdapter } from './SseEventAdapter'
 import {
   createRemoteErrorEnvelope,
   createRemoteEventEnvelope,
@@ -721,7 +721,7 @@ export class CommandExecutionService {
       instructions: payload.prompt,
       accessible_paths: payload.directories,
       configuration: AgentConfigurationSchema.parse({
-        ...(existingAgent?.configuration ?? {}),
+        ...existingAgent?.configuration,
         permission_mode: payload.permissionMode
       }),
       model: model ?? (await this.resolveDefaultModel(type))

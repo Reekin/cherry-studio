@@ -82,10 +82,11 @@ describe('CodexAppServerEventAdapter', () => {
       'text-delta',
       'text-delta',
       'text-end',
-      'finish-step'
+      'finish-step',
+      'finish'
     ])
 
-    const finishStep = parts.at(-1)
+    const finishStep = parts.at(-2)
     expect(finishStep?.type).toBe('finish-step')
     if (finishStep?.type === 'finish-step') {
       expect(finishStep.usage).toMatchObject({
@@ -94,6 +95,17 @@ describe('CodexAppServerEventAdapter', () => {
         totalTokens: 24
       })
       expect(finishStep.finishReason).toBe('stop')
+    }
+
+    const finish = parts.at(-1)
+    expect(finish?.type).toBe('finish')
+    if (finish?.type === 'finish') {
+      expect(finish.totalUsage).toMatchObject({
+        inputTokens: 10,
+        outputTokens: 14,
+        totalTokens: 24
+      })
+      expect(finish.finishReason).toBe('stop')
     }
   })
 
@@ -189,7 +201,8 @@ describe('CodexAppServerEventAdapter', () => {
       'reasoning-start',
       'reasoning-delta',
       'reasoning-end',
-      'finish-step'
+      'finish-step',
+      'finish'
     ])
 
     const toolResult = parts.find((part) => part.type === 'tool-result')
@@ -199,6 +212,104 @@ describe('CodexAppServerEventAdapter', () => {
       expect(toolResult.output).toMatchObject({
         aggregatedOutput: '/tmp',
         exitCode: 0
+      })
+    }
+  })
+
+  it('maps file changes into generic tool chunks', () => {
+    const adapter = new CodexAppServerEventAdapter()
+    const events: CodexAppServerEvent[] = [
+      {
+        type: 'turn.started',
+        threadId: 'thread-3',
+        turn: {
+          id: 'turn-3',
+          status: 'inProgress',
+          items: []
+        }
+      },
+      {
+        type: 'item.started',
+        threadId: 'thread-3',
+        turnId: 'turn-3',
+        item: {
+          type: 'fileChange',
+          id: 'file-1',
+          changes: [
+            {
+              path: '/tmp/ffff.txt',
+              kind: { type: 'add' },
+              diff: ''
+            }
+          ],
+          status: 'inProgress'
+        }
+      },
+      {
+        type: 'item.completed',
+        threadId: 'thread-3',
+        turnId: 'turn-3',
+        item: {
+          type: 'fileChange',
+          id: 'file-1',
+          changes: [
+            {
+              path: '/tmp/ffff.txt',
+              kind: { type: 'add' },
+              diff: ''
+            }
+          ],
+          status: 'completed'
+        }
+      },
+      {
+        type: 'turn.completed',
+        threadId: 'thread-3',
+        turn: {
+          id: 'turn-3',
+          status: 'completed',
+          items: []
+        }
+      }
+    ]
+
+    const parts = events.flatMap((event) => adapter.adapt(event))
+
+    expect(parts.map((part) => part.type)).toEqual([
+      'start-step',
+      'tool-input-start',
+      'tool-input-delta',
+      'tool-input-end',
+      'tool-call',
+      'tool-result',
+      'finish-step',
+      'finish'
+    ])
+
+    const toolCall = parts.find((part) => part.type === 'tool-call')
+    expect(toolCall?.type).toBe('tool-call')
+    if (toolCall?.type === 'tool-call') {
+      expect(toolCall.toolName).toBe('file_change')
+      expect(toolCall.input).toMatchObject({
+        changes: [
+          expect.objectContaining({
+            path: '/tmp/ffff.txt'
+          })
+        ]
+      })
+    }
+
+    const toolResult = parts.find((part) => part.type === 'tool-result')
+    expect(toolResult?.type).toBe('tool-result')
+    if (toolResult?.type === 'tool-result') {
+      expect(toolResult.toolCallId).toBe('file-1')
+      expect(toolResult.output).toMatchObject({
+        status: 'completed',
+        changes: [
+          expect.objectContaining({
+            path: '/tmp/ffff.txt'
+          })
+        ]
       })
     }
   })
@@ -297,6 +408,7 @@ describe('CodexProvider', () => {
       'chunk',
       'chunk',
       'chunk',
+      'chunk',
       'complete'
     ])
     expect(events[1].chunk.type).toBe('start-step')
@@ -304,5 +416,6 @@ describe('CodexProvider', () => {
     expect(events[3].chunk.type).toBe('text-delta')
     expect(events[4].chunk.type).toBe('text-end')
     expect(events[5].chunk.type).toBe('finish-step')
+    expect(events[6].chunk.type).toBe('finish')
   })
 })

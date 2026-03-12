@@ -14,7 +14,16 @@ type AgentStreamPart = TextStreamPart<Record<string, any>>
 
 type ToolLikeItem = Extract<
   CodexThreadItem,
-  { type: 'commandExecution' | 'mcpToolCall' | 'dynamicToolCall' | 'webSearch' | 'imageView' | 'imageGeneration' }
+  {
+    type:
+      | 'commandExecution'
+      | 'fileChange'
+      | 'mcpToolCall'
+      | 'dynamicToolCall'
+      | 'webSearch'
+      | 'imageView'
+      | 'imageGeneration'
+  }
 >
 
 type CodexAdapterState = {
@@ -55,6 +64,7 @@ const emptyUsage: LanguageModelUsage = {
 const isToolLikeItem = (item: CodexThreadItem): item is ToolLikeItem => {
   return (
     item.type === 'commandExecution' ||
+    item.type === 'fileChange' ||
     item.type === 'mcpToolCall' ||
     item.type === 'dynamicToolCall' ||
     item.type === 'webSearch' ||
@@ -66,6 +76,7 @@ const isToolLikeItem = (item: CodexThreadItem): item is ToolLikeItem => {
 const isTerminalToolError = (item: ToolLikeItem): boolean => {
   switch (item.type) {
     case 'commandExecution':
+    case 'fileChange':
       return /fail|error|reject|deny/i.test(item.status)
     case 'mcpToolCall':
       return !!item.error || /fail|error/i.test(item.status)
@@ -96,6 +107,10 @@ const serializeToolInput = (item: ToolLikeItem): unknown => {
         cwd: item.cwd,
         commandActions: item.commandActions,
         processId: item.processId
+      }
+    case 'fileChange':
+      return {
+        changes: item.changes
       }
     case 'mcpToolCall':
       return {
@@ -134,6 +149,11 @@ const serializeToolOutput = (item: ToolLikeItem): unknown => {
         aggregatedOutput: item.aggregatedOutput,
         exitCode: item.exitCode,
         durationMs: item.durationMs
+      }
+    case 'fileChange':
+      return {
+        status: item.status,
+        changes: item.changes
       }
     case 'mcpToolCall':
       return {
@@ -175,6 +195,8 @@ const toToolName = (item: ToolLikeItem): string => {
   switch (item.type) {
     case 'commandExecution':
       return 'command_execution'
+    case 'fileChange':
+      return 'file_change'
     case 'mcpToolCall':
       return item.tool
     case 'dynamicToolCall':
@@ -320,6 +342,15 @@ export class CodexAppServerEventAdapter {
         error: event.turn.error ?? undefined
       })
     })
+
+    if (event.turn.status === 'completed') {
+      chunks.push({
+        type: 'finish',
+        totalUsage: this.state.usage ?? emptyUsage,
+        finishReason: toFinishReason(event.turn.status),
+        rawFinishReason: event.turn.status
+      })
+    }
 
     this.state.stepStarted = false
     this.state.currentTurnId = undefined

@@ -1,6 +1,6 @@
 import { loggerService } from '@logger'
 
-import { BridgeSocketClient } from './BridgeSocketClient'
+import type { BridgeSocketClient } from './BridgeSocketClient'
 import {
   type AgentRemotePublishedEvent,
   type BridgePresencePayload,

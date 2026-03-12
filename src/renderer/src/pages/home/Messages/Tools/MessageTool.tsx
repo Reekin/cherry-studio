@@ -12,10 +12,10 @@ interface Props {
 }
 const builtinToolsPrefix = 'builtin_'
 const agentMcpToolsPrefix = 'mcp__'
-const agentTools = Object.values(AgentToolsType)
+const agentToolNames = new Set<string>(Object.values(AgentToolsType))
 
-const isAgentTool = (toolName: AgentToolsType) => {
-  if (agentTools.includes(toolName) || toolName.startsWith(agentMcpToolsPrefix)) {
+const isAgentTool = (toolName: string) => {
+  if (agentToolNames.has(toolName) || toolName.startsWith(agentMcpToolsPrefix)) {
     return true
   }
   return false
@@ -37,9 +37,14 @@ const ChooseTool = (toolResponse: NormalToolResponse): React.ReactNode | null =>
       default:
         return null
     }
-  } else if (isAgentTool(toolName as AgentToolsType)) {
+  } else if (isAgentTool(toolName)) {
     return <MessageAgentTools toolResponse={toolResponse} />
   }
+
+  if (toolType === 'provider') {
+    return <MessageAgentTools toolResponse={toolResponse} />
+  }
+
   return null
 }
 

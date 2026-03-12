@@ -219,9 +219,9 @@ export type AgentForm = AddAgentForm | UpdateAgentForm
 
 export type BaseSessionForm = AgentBase
 
-export type CreateSessionForm = BaseSessionForm & { id?: never }
+export type CreateSessionForm = BaseSessionForm & { type: AgentType; id?: never }
 
-export type UpdateSessionForm = Partial<BaseSessionForm> & { id: string }
+export type UpdateSessionForm = Partial<BaseSessionForm> & { id: string; type?: AgentType }
 
 export type SessionForm = CreateSessionForm | UpdateSessionForm
 
@@ -376,14 +376,47 @@ export const UpdateAgentRequestSchema = AgentBaseSchema.partial().extend({
 export const ReplaceAgentRequestSchema = AgentBaseSchema
 
 const sessionCreatableSchema = AgentBaseSchema.extend({
-  model: z.string().min(1, 'Model is required')
+  type: AgentTypeSchema.optional(),
+  agent_type: AgentTypeSchema.optional()
 })
 
-export const CreateSessionRequestSchema = sessionCreatableSchema
+const addRequiredModelIssue = (ctx: z.RefinementCtx) => {
+  ctx.addIssue({
+    code: z.ZodIssueCode.custom,
+    path: ['model'],
+    message: 'Model is required'
+  })
+}
 
-export const UpdateSessionRequestSchema = sessionCreatableSchema.partial()
+const getSessionRequestAgentType = (value: { type?: AgentType; agent_type?: AgentType }) =>
+  value.type ?? value.agent_type
 
-export const ReplaceSessionRequestSchema = sessionCreatableSchema
+const validateSessionModel = (
+  value: {
+    model: string
+    type?: AgentType
+    agent_type?: AgentType
+  },
+  ctx: z.RefinementCtx
+) => {
+  if (getSessionRequestAgentType(value) !== 'codex' && !value.model.trim()) {
+    addRequiredModelIssue(ctx)
+  }
+}
+
+export const CreateSessionRequestSchema = sessionCreatableSchema.superRefine(validateSessionModel)
+
+export const UpdateSessionRequestSchema = sessionCreatableSchema.partial().superRefine((value, ctx) => {
+  if (value.model === undefined) {
+    return
+  }
+
+  if (getSessionRequestAgentType(value) !== 'codex' && !value.model.trim()) {
+    addRequiredModelIssue(ctx)
+  }
+})
+
+export const ReplaceSessionRequestSchema = sessionCreatableSchema.superRefine(validateSessionModel)
 
 export type ReplaceSessionRequest = z.infer<typeof ReplaceSessionRequestSchema>
 

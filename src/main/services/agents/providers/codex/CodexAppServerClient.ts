@@ -64,6 +64,117 @@ const toRecord = (value: unknown): Record<string, any> | null => {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, any>) : null
 }
 
+type CodexEventMappingContext = {
+  threadId?: string
+  turnId?: string
+}
+
+export function codexNotificationToAppServerEvent(
+  notification: JsonRpcNotificationMessage,
+  context: CodexEventMappingContext = {}
+): CodexAppServerEvent | null {
+  const params = toRecord(notification.params)
+  if (!params) {
+    return null
+  }
+
+  switch (notification.method) {
+    case 'turn/started':
+      return {
+        type: 'turn.started',
+        threadId: params.threadId,
+        turn: params.turn
+      }
+    case 'turn/completed':
+      return {
+        type: 'turn.completed',
+        threadId: params.threadId,
+        turn: params.turn
+      }
+    case 'item/started':
+      return {
+        type: 'item.started',
+        threadId: params.threadId,
+        turnId: params.turnId,
+        item: params.item
+      }
+    case 'item/completed':
+      return {
+        type: 'item.completed',
+        threadId: params.threadId,
+        turnId: params.turnId,
+        item: params.item
+      }
+    case 'item/agentMessage/delta':
+      return {
+        type: 'agent.message.delta',
+        threadId: params.threadId,
+        turnId: params.turnId,
+        itemId: params.itemId,
+        delta: params.delta
+      }
+    case 'item/plan/delta':
+      return {
+        type: 'plan.delta',
+        threadId: params.threadId,
+        turnId: params.turnId,
+        itemId: params.itemId,
+        delta: params.delta
+      }
+    case 'item/reasoning/summaryTextDelta':
+      return {
+        type: 'reasoning.summary.delta',
+        threadId: params.threadId,
+        turnId: params.turnId,
+        itemId: params.itemId,
+        delta: params.delta,
+        summaryIndex: params.summaryIndex
+      }
+    case 'thread/tokenUsage/updated':
+      return {
+        type: 'thread.token.usage.updated',
+        threadId: params.threadId,
+        turnId: params.turnId,
+        tokenUsage: params.tokenUsage
+      }
+    case 'error':
+      return {
+        type: 'error',
+        threadId: params.threadId,
+        turnId: params.turnId,
+        error: params.error,
+        willRetry: Boolean(params.willRetry)
+      }
+    case 'codex/event/task_complete': {
+      const msg = toRecord(params.msg)
+      const turnId = typeof msg?.turn_id === 'string' ? msg.turn_id : context.turnId
+      const threadId =
+        typeof params.conversationId === 'string'
+          ? params.conversationId
+          : typeof context.threadId === 'string'
+            ? context.threadId
+            : undefined
+
+      if (!turnId || !threadId) {
+        return null
+      }
+
+      return {
+        type: 'turn.completed',
+        threadId,
+        turn: {
+          id: turnId,
+          items: [],
+          status: 'completed',
+          error: null
+        }
+      }
+    }
+    default:
+      return null
+  }
+}
+
 const isAbortError = (value: unknown): value is Error => {
   return value instanceof Error && value.name === 'AbortError'
 }
@@ -380,9 +491,7 @@ export class CodexAppServerClient {
         throw new Error('Codex app-server did not return a thread id')
       }
 
-      void this.forwardNotifications(rpc.notifications, eventQueue, cleanup)
-
-      await rpc.request('turn/start', {
+      const turnStarted = (await rpc.request('turn/start', {
         threadId,
         input: [
           {
@@ -395,7 +504,10 @@ export class CodexAppServerClient {
         approvalPolicy: executionPolicy.approvalPolicy,
         sandboxPolicy: executionPolicy.turnSandboxPolicy,
         ...(options.thinkingOptions?.effort ? { effort: options.thinkingOptions.effort } : {})
-      })
+      })) as { turn?: { id?: string } }
+
+      const turnId = turnStarted.turn?.id ?? ''
+      void this.forwardNotifications(rpc.notifications, eventQueue, cleanup, { threadId, turnId })
 
       return {
         threadId,
@@ -414,11 +526,12 @@ export class CodexAppServerClient {
   private async forwardNotifications(
     notifications: AsyncIterable<JsonRpcNotificationMessage>,
     eventQueue: AsyncQueue<CodexAppServerEvent>,
-    cleanup: () => void
+    cleanup: () => void,
+    context: CodexEventMappingContext
   ): Promise<void> {
     try {
       for await (const notification of notifications) {
-        const event = this.toAppServerEvent(notification)
+        const event = codexNotificationToAppServerEvent(notification, context)
         if (!event) {
           continue
         }
@@ -477,84 +590,6 @@ export class CodexAppServerClient {
         networkAccess: false,
         writableRoots
       }
-    }
-  }
-
-  private toAppServerEvent(notification: JsonRpcNotificationMessage): CodexAppServerEvent | null {
-    const params = toRecord(notification.params)
-    if (!params) {
-      return null
-    }
-
-    switch (notification.method) {
-      case 'turn/started':
-        return {
-          type: 'turn.started',
-          threadId: params.threadId,
-          turn: params.turn
-        }
-      case 'turn/completed':
-        return {
-          type: 'turn.completed',
-          threadId: params.threadId,
-          turn: params.turn
-        }
-      case 'item/started':
-        return {
-          type: 'item.started',
-          threadId: params.threadId,
-          turnId: params.turnId,
-          item: params.item
-        }
-      case 'item/completed':
-        return {
-          type: 'item.completed',
-          threadId: params.threadId,
-          turnId: params.turnId,
-          item: params.item
-        }
-      case 'item/agentMessage/delta':
-        return {
-          type: 'agent.message.delta',
-          threadId: params.threadId,
-          turnId: params.turnId,
-          itemId: params.itemId,
-          delta: params.delta
-        }
-      case 'item/plan/delta':
-        return {
-          type: 'plan.delta',
-          threadId: params.threadId,
-          turnId: params.turnId,
-          itemId: params.itemId,
-          delta: params.delta
-        }
-      case 'item/reasoning/summaryTextDelta':
-        return {
-          type: 'reasoning.summary.delta',
-          threadId: params.threadId,
-          turnId: params.turnId,
-          itemId: params.itemId,
-          delta: params.delta,
-          summaryIndex: params.summaryIndex
-        }
-      case 'thread/tokenUsage/updated':
-        return {
-          type: 'thread.token.usage.updated',
-          threadId: params.threadId,
-          turnId: params.turnId,
-          tokenUsage: params.tokenUsage
-        }
-      case 'error':
-        return {
-          type: 'error',
-          threadId: params.threadId,
-          turnId: params.turnId,
-          error: params.error,
-          willRetry: Boolean(params.willRetry)
-        }
-      default:
-        return null
     }
   }
 }
