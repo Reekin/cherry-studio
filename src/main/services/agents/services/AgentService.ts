@@ -82,7 +82,7 @@ export class AgentService extends BaseService {
       return null
     }
 
-    const agent = this.deserializeJsonFields(result[0]) as GetAgentResponse
+    const agent = this.sanitizeCodexModelFields(this.deserializeJsonFields(result[0]) as GetAgentResponse)
     const { tools, legacyIdMap } = await this.listMcpTools(agent.type, agent.mcps)
     agent.tools = tools
     agent.allowed_tools = this.normalizeAllowedTools(agent.allowed_tools, agent.tools, legacyIdMap)
@@ -127,7 +127,9 @@ export class AgentService extends BaseService {
           : await baseQuery.limit(options.limit)
         : await baseQuery
 
-    const agents = result.map((row) => this.deserializeJsonFields(row)) as GetAgentResponse[]
+    const agents = result.map((row) =>
+      this.sanitizeCodexModelFields(this.deserializeJsonFields(row) as GetAgentResponse)
+    )
 
     for (const agent of agents) {
       const { tools, legacyIdMap } = await this.listMcpTools(agent.type, agent.mcps)

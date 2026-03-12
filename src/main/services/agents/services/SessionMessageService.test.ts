@@ -71,7 +71,7 @@ describe('SessionMessageService provider runtime selection', () => {
         name: 'Codex Session',
         accessible_paths: ['I:/workspace'],
         instructions: 'Test',
-        model: 'codex-placeholder',
+        model: '',
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       } as any,
@@ -112,7 +112,7 @@ describe('SessionMessageService provider runtime selection', () => {
           name: 'Codex Session',
           accessible_paths: ['I:/workspace'],
           instructions: 'Test',
-          model: 'codex-placeholder',
+          model: '',
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         } as any,

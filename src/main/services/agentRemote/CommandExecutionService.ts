@@ -745,10 +745,10 @@ export class CommandExecutionService {
     existingModel?: string
   ): string | undefined {
     if (provider === 'codex') {
-      return existingModel ?? 'codex-placeholder'
+      return ''
     }
 
-    if (existingModel && existingModel.trim().length > 0 && existingModel !== 'codex-placeholder') {
+    if (existingModel && existingModel.trim().length > 0) {
       return existingModel
     }
 
@@ -759,7 +759,7 @@ export class CommandExecutionService {
     provider: Extract<RemoteCommandEnvelope, { event: 'agent.upsert' }>['payload']['provider']
   ): Promise<string> {
     if (provider === 'codex') {
-      return 'codex-placeholder'
+      return ''
     }
 
     const { getAvailableProviders } = await import('@main/apiServer/utils')

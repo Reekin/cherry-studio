@@ -83,7 +83,7 @@ export class SessionService extends BaseService {
     if (!agents[0]) {
       throw new Error('Agent not found')
     }
-    const agent = this.deserializeJsonFields(agents[0]) as AgentEntity
+    const agent = this.sanitizeCodexModelFields(this.deserializeJsonFields(agents[0]) as AgentEntity)
 
     const id = `session_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`
     const now = new Date().toISOString()
@@ -149,7 +149,7 @@ export class SessionService extends BaseService {
       return null
     }
 
-    const session = this.deserializeJsonFields(result[0]) as GetAgentSessionResponse
+    const session = this.sanitizeCodexModelFields(this.deserializeJsonFields(result[0]) as GetAgentSessionResponse)
     const { tools, legacyIdMap } = await this.listMcpTools(session.agent_type, session.mcps)
     session.tools = tools
     session.allowed_tools = this.normalizeAllowedTools(session.allowed_tools, session.tools, legacyIdMap)
@@ -196,7 +196,9 @@ export class SessionService extends BaseService {
           : await baseQuery.limit(options.limit)
         : await baseQuery
 
-    const sessions = result.map((row) => this.deserializeJsonFields(row)) as GetAgentSessionResponse[]
+    const sessions = result.map((row) =>
+      this.sanitizeCodexModelFields(this.deserializeJsonFields(row) as GetAgentSessionResponse)
+    )
 
     for (const session of sessions) {
       const { tools, legacyIdMap } = await this.listMcpTools(session.agent_type, session.mcps)

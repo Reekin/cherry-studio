@@ -187,6 +187,28 @@ export abstract class BaseService {
     return deserialized
   }
 
+  protected sanitizeCodexModelFields<
+    T extends {
+      type?: AgentType
+      agent_type?: AgentType
+      model?: string
+      plan_model?: string
+      small_model?: string
+    }
+  >(data: T): T {
+    const providerType = data.type ?? data.agent_type
+    if (providerType !== 'codex') {
+      return data
+    }
+
+    return {
+      ...data,
+      model: '',
+      plan_model: undefined,
+      small_model: undefined
+    }
+  }
+
   /**
    * Validate, normalize, and ensure filesystem access for a set of absolute paths.
    *

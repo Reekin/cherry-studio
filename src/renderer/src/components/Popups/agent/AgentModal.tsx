@@ -35,7 +35,7 @@ const buildAgentForm = (existing?: AgentWithTools): BaseAgentForm => ({
   name: existing?.name ?? 'Agent',
   description: existing?.description,
   instructions: existing?.instructions,
-  model: existing?.model ?? '',
+  model: existing?.type === 'codex' ? '' : (existing?.model ?? ''),
   accessible_paths: existing?.accessible_paths ? [...existing.accessible_paths] : [],
   allowed_tools: existing?.allowed_tools ? [...existing.allowed_tools] : [],
   mcps: existing?.mcps ? [...existing.mcps] : [],
@@ -83,6 +83,7 @@ const PopupContainer: React.FC<Props> = ({ agent, afterSubmit, resolve }) => {
   }, [checkGitBash])
 
   const selectedPermissionMode = form.configuration?.permission_mode ?? 'default'
+  const requiresModelSelection = form.type !== 'codex'
 
   const handlePickGitBash = useCallback(async () => {
     try {
@@ -146,10 +147,20 @@ const PopupContainer: React.FC<Props> = ({ agent, afterSubmit, resolve }) => {
   }, [])
 
   const onProviderChange = useCallback((value: BaseAgentForm['type']) => {
-    setForm((prev) => ({
-      ...prev,
-      type: value
-    }))
+    setForm((prev) => {
+      if (value === 'codex') {
+        return {
+          ...prev,
+          type: value,
+          model: ''
+        }
+      }
+
+      return {
+        ...prev,
+        type: value
+      }
+    })
   }, [])
 
   const onNameChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
@@ -247,7 +258,7 @@ const PopupContainer: React.FC<Props> = ({ agent, afterSubmit, resolve }) => {
         loadingRef.current = false
         return
       }
-      if (!form.model) {
+      if (requiresModelSelection && !form.model) {
         window.toast.error(t('error.model.not_exists'))
         loadingRef.current = false
         return
@@ -271,7 +282,7 @@ const PopupContainer: React.FC<Props> = ({ agent, afterSubmit, resolve }) => {
           name: form.name,
           description: form.description,
           instructions: form.instructions,
-          model: form.model,
+          model: requiresModelSelection ? form.model : '',
           accessible_paths: [...form.accessible_paths],
           allowed_tools: [...form.allowed_tools],
           configuration: form.configuration ? { ...form.configuration } : undefined
@@ -290,7 +301,7 @@ const PopupContainer: React.FC<Props> = ({ agent, afterSubmit, resolve }) => {
           name: form.name,
           description: form.description,
           instructions: form.instructions,
-          model: form.model,
+          model: requiresModelSelection ? form.model : '',
           accessible_paths: [...form.accessible_paths],
           allowed_tools: [...form.allowed_tools],
           configuration: form.configuration ? { ...form.configuration } : undefined
@@ -309,6 +320,7 @@ const PopupContainer: React.FC<Props> = ({ agent, afterSubmit, resolve }) => {
     [
       form.type,
       form.model,
+      requiresModelSelection,
       form.accessible_paths,
       form.name,
       form.description,
@@ -365,35 +377,37 @@ const PopupContainer: React.FC<Props> = ({ agent, afterSubmit, resolve }) => {
               {form.type === 'codex' && (
                 <HelpText>
                   {t('agent.provider.codex.placeholder', {
-                    defaultValue: 'Codex can be selected for new agents, but message execution is not implemented yet.'
+                    defaultValue: 'Codex uses the local Codex CLI configuration for model selection.'
                   })}
                 </HelpText>
               )}
             </FormItem>
 
-            <FormItem>
-              <div className="flex items-center gap-2">
-                <Label>
-                  {t('common.model')} <RequiredMark>*</RequiredMark>
-                </Label>
-                <HelpTooltip title={t('agent.add.model.tooltip')} />
-              </div>
-              <SelectAgentBaseModelButton
-                agentBase={tempAgentBase}
-                onSelect={handleModelSelect}
-                fontSize={14}
-                avatarSize={24}
-                iconSize={16}
-                buttonStyle={{
-                  padding: '3px 8px',
-                  width: '100%',
-                  border: '1px solid var(--color-border)',
-                  borderRadius: 6,
-                  height: 'auto'
-                }}
-                containerClassName="flex items-center justify-between w-full"
-              />
-            </FormItem>
+            {requiresModelSelection && (
+              <FormItem>
+                <div className="flex items-center gap-2">
+                  <Label>
+                    {t('common.model')} <RequiredMark>*</RequiredMark>
+                  </Label>
+                  <HelpTooltip title={t('agent.add.model.tooltip')} />
+                </div>
+                <SelectAgentBaseModelButton
+                  agentBase={tempAgentBase}
+                  onSelect={handleModelSelect}
+                  fontSize={14}
+                  avatarSize={24}
+                  iconSize={16}
+                  buttonStyle={{
+                    padding: '3px 8px',
+                    width: '100%',
+                    border: '1px solid var(--color-border)',
+                    borderRadius: 6,
+                    height: 'auto'
+                  }}
+                  containerClassName="flex items-center justify-between w-full"
+                />
+              </FormItem>
+            )}
 
             {isWin && (
               <FormItem>

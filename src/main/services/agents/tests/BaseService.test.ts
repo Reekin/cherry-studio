@@ -102,7 +102,7 @@ describe('BaseService provider metadata', () => {
   const service = new TestBaseService()
 
   it('skips hosted model validation for codex providers', async () => {
-    await service.validateModelsForTest('codex', 'codex-placeholder')
+    await service.validateModelsForTest('codex', '')
 
     expect(validateModelId).not.toHaveBeenCalled()
   })

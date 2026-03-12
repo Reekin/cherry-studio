@@ -345,7 +345,6 @@ export class CodexAppServerClient {
       })
       rpc.notify('initialized', {})
 
-      const model = this.normalizeModel(options.session.model)
       const developerInstructions =
         typeof options.session.instructions === 'string' && options.session.instructions.trim().length > 0
           ? options.session.instructions
@@ -360,8 +359,7 @@ export class CodexAppServerClient {
           approvalPolicy: executionPolicy.approvalPolicy,
           sandbox: executionPolicy.sandboxMode,
           developerInstructions,
-          persistExtendedHistory: true,
-          ...(model ? { model } : {})
+          persistExtendedHistory: true
         })) as { thread?: { id?: string } }
 
         threadId = resumed.thread?.id ?? threadId
@@ -372,8 +370,7 @@ export class CodexAppServerClient {
           sandbox: executionPolicy.sandboxMode,
           developerInstructions,
           experimentalRawEvents: false,
-          persistExtendedHistory: true,
-          ...(model ? { model } : {})
+          persistExtendedHistory: true
         })) as { thread?: { id?: string } }
 
         threadId = started.thread?.id ?? ''
@@ -397,7 +394,6 @@ export class CodexAppServerClient {
         cwd,
         approvalPolicy: executionPolicy.approvalPolicy,
         sandboxPolicy: executionPolicy.turnSandboxPolicy,
-        ...(model ? { model } : {}),
         ...(options.thinkingOptions?.effort ? { effort: options.thinkingOptions.effort } : {})
       })
 
@@ -436,19 +432,6 @@ export class CodexAppServerClient {
     } catch (error) {
       eventQueue.fail(error)
     }
-  }
-
-  private normalizeModel(model?: string | null): string | undefined {
-    if (!model) {
-      return undefined
-    }
-
-    const trimmed = model.trim()
-    if (!trimmed || trimmed === 'codex-placeholder') {
-      return undefined
-    }
-
-    return trimmed
   }
 
   private resolveExecutionPolicy(session: GetAgentSessionResponse): {

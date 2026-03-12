@@ -352,13 +352,22 @@ export const PaginationQuerySchema = z.object({
 
 // Request body validation schemas derived from shared bases
 const agentCreatableSchema = AgentBaseSchema.extend({
-  name: z.string().min(1, 'Name is required'),
-  model: z.string().min(1, 'Model is required')
+  name: z.string().min(1, 'Name is required')
 })
 
-export const CreateAgentRequestSchema = agentCreatableSchema.extend({
-  type: AgentTypeSchema
-})
+export const CreateAgentRequestSchema = agentCreatableSchema
+  .extend({
+    type: AgentTypeSchema
+  })
+  .superRefine((value, ctx) => {
+    if (value.type !== 'codex' && !value.model.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['model'],
+        message: 'Model is required'
+      })
+    }
+  })
 
 export const UpdateAgentRequestSchema = AgentBaseSchema.partial().extend({
   type: AgentTypeSchema.optional()
