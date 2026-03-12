@@ -11,6 +11,8 @@ vi.mock('@main/apiServer/utils', () => ({
   validateModelId: vi.fn()
 }))
 
+import { validateModelId } from '@main/apiServer/utils'
+
 import { BaseService } from '../BaseService'
 
 class TestBaseService extends BaseService {
@@ -20,6 +22,12 @@ class TestBaseService extends BaseService {
     legacyIdMap?: Map<string, string>
   ): string[] | undefined {
     return this.normalizeAllowedTools(allowedTools, tools, legacyIdMap)
+  }
+
+  public async validateModelsForTest(agentType: 'claude-code' | 'codex', model: string): Promise<void> {
+    await this.validateAgentModels(agentType, {
+      model
+    })
   }
 }
 
@@ -87,5 +95,38 @@ describe('BaseService.normalizeAllowedTools', () => {
     const tools: Tool[] = [{ id: 'custom_tool', name: 'custom_tool', type: 'custom' }]
 
     expect(service.normalize(allowedTools, tools)).toEqual(allowedTools)
+  })
+})
+
+describe('BaseService provider metadata', () => {
+  const service = new TestBaseService()
+
+  it('skips hosted model validation for codex providers', async () => {
+    await service.validateModelsForTest('codex', 'codex-placeholder')
+
+    expect(validateModelId).not.toHaveBeenCalled()
+  })
+
+  it('validates hosted models for claude providers', async () => {
+    vi.mocked(validateModelId).mockResolvedValue({
+      valid: true,
+      provider: {
+        id: 'anthropic',
+        apiKey: 'test-key'
+      },
+      modelId: 'claude-3-7-sonnet'
+    } as Awaited<ReturnType<typeof validateModelId>>)
+
+    await service.validateModelsForTest('claude-code', 'anthropic:claude-3-7-sonnet')
+
+    expect(validateModelId).toHaveBeenCalledWith('anthropic:claude-3-7-sonnet')
+  })
+
+  it('lists provider-specific builtin slash commands', async () => {
+    const claudeCommands = await service.listSlashCommands('claude-code')
+    const codexCommands = await service.listSlashCommands('codex')
+
+    expect(claudeCommands.length).toBeGreaterThan(0)
+    expect(codexCommands).toEqual([])
   })
 })

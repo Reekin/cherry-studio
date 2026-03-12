@@ -12,8 +12,7 @@ import path from 'path'
 import { DatabaseManager } from './database/DatabaseManager'
 import type { AgentModelField } from './errors'
 import { AgentModelValidationError } from './errors'
-import { builtinSlashCommands } from './services/claudecode/commands'
-import { builtinTools } from './services/claudecode/tools'
+import { getAgentProviderDescriptor } from './providers'
 
 const logger = loggerService.withContext('BaseService')
 const MCP_TOOL_ID_PREFIX = 'mcp__'
@@ -52,11 +51,8 @@ export abstract class BaseService {
     agentType: AgentType,
     ids?: string[]
   ): Promise<{ tools: Tool[]; legacyIdMap: Map<string, string> }> {
-    const tools: Tool[] = []
+    const tools: Tool[] = [...getAgentProviderDescriptor(agentType).builtinTools]
     const legacyIdMap = new Map<string, string>()
-    if (agentType === 'claude-code') {
-      tools.push(...builtinTools)
-    }
     if (ids && ids.length > 0) {
       for (const id of ids) {
         try {
@@ -139,10 +135,7 @@ export abstract class BaseService {
   }
 
   public async listSlashCommands(agentType: AgentType): Promise<SlashCommand[]> {
-    if (agentType === 'claude-code') {
-      return builtinSlashCommands
-    }
-    return []
+    return [...getAgentProviderDescriptor(agentType).builtinSlashCommands]
   }
 
   /**
@@ -281,7 +274,7 @@ export abstract class BaseService {
     agentType: AgentType,
     models: Partial<Record<AgentModelField, string | undefined>>
   ): Promise<void> {
-    if (agentType === 'codex') {
+    if (!getAgentProviderDescriptor(agentType).capabilities.requiresModelValidation) {
       return
     }
 

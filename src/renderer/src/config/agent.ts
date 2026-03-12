@@ -36,7 +36,7 @@ export const agentProviderOptions: Array<{ value: AgentType; label: string; desc
   {
     value: 'codex',
     label: 'Codex',
-    description: 'Reserved provider slot for Codex. Execution is not implemented yet.'
+    description: 'Use Codex app-server as the execution provider for new sessions.'
   }
 ]
 

@@ -1,6 +1,16 @@
 import * as z from 'zod'
 
 import {
+  semanticMessageBlockAddedPayloadSchema,
+  semanticMessageBlockCompletedPayloadSchema,
+  semanticMessageBlockUpdatedPayloadSchema,
+  semanticMessageCompletedPayloadSchema,
+  semanticMessageFailedPayloadSchema,
+  semanticMessageStartedPayloadSchema,
+  semanticSessionSnapshotV2Schema,
+  semanticSessionVersionBumpPayloadSchema
+} from '../semantics/index.js'
+import {
   remoteAckEvents,
   remoteCommandEvents,
   remoteEnvelopeTypes,
@@ -8,7 +18,7 @@ import {
   remoteEventEvents,
   remoteOrigins,
   remoteRunPushPolicies
-} from './constants'
+} from './constants.js'
 
 export const remoteOriginSchema = z.enum(remoteOrigins)
 export type RemoteOrigin = z.infer<typeof remoteOriginSchema>
@@ -37,10 +47,13 @@ export type RemoteErrorCode = z.infer<typeof remoteErrorCodeSchema>
 export const remoteAgentPermissionModeSchema = z.enum(['default', 'acceptEdits', 'bypassPermissions', 'plan'])
 export type RemoteAgentPermissionMode = z.infer<typeof remoteAgentPermissionModeSchema>
 
+export const remoteRunIdSchema = z.string().min(1)
+export type RemoteRunId = z.infer<typeof remoteRunIdSchema>
+
 const remoteBaseEnvelopeSchema = z.object({
   type: remoteEnvelopeTypeSchema,
   event: z.string(),
-  runId: z.string().uuid().optional(),
+  runId: remoteRunIdSchema.optional(),
   requestId: z.string().uuid().optional(),
   seq: z.number().int().nonnegative().optional(),
   ts: z.number().int().nonnegative(),
@@ -146,63 +159,13 @@ export const sessionPushedPayloadSchema = z.object({
 })
 export type SessionPushedPayload = z.infer<typeof sessionPushedPayloadSchema>
 
-export const messageDeltaPayloadSchema = z.object({
-  sessionId: z.string().min(1),
-  runId: z.string().uuid().optional(),
-  messageId: z.string().min(1).default('assistant'),
-  role: z.enum(['assistant', 'user', 'system', 'tool']).default('assistant'),
-  delta: z.string(),
-  version: z.number().int().nonnegative().optional(),
-  updatedAt: z.number().int().nonnegative().optional()
-})
-export type MessageDeltaPayload = z.infer<typeof messageDeltaPayloadSchema>
+export const sessionSnapshotV2PayloadSchema = semanticSessionSnapshotV2Schema
+export type SessionSnapshotV2Payload = z.infer<typeof sessionSnapshotV2PayloadSchema>
 
-export const messageDonePayloadSchema = z.object({
-  sessionId: z.string().min(1),
-  runId: z.string().uuid().optional(),
-  messageId: z.string().min(1).default('assistant'),
-  version: z.number().int().nonnegative().optional(),
-  updatedAt: z.number().int().nonnegative().optional(),
-  status: z.enum(['success', 'cancelled']).default('success')
-})
-export type MessageDonePayload = z.infer<typeof messageDonePayloadSchema>
-
-export const messageErrorPayloadSchema = z.object({
-  sessionId: z.string().min(1),
-  runId: z.string().uuid().optional(),
-  messageId: z.string().min(1).default('assistant'),
-  code: z.string().min(1),
-  message: z.string().min(1),
-  retryable: z.boolean().optional().default(false),
-  version: z.number().int().nonnegative().optional(),
-  updatedAt: z.number().int().nonnegative().optional()
-})
-export type MessageErrorPayload = z.infer<typeof messageErrorPayloadSchema>
-
-export const remoteSnapshotMessageSchema = z.object({
-  messageId: z.string().min(1),
-  runId: z.string().uuid().optional(),
-  role: z.enum(['assistant', 'user', 'system', 'tool']),
-  content: z.string(),
-  status: z.enum(['streaming', 'done', 'error']).default('done'),
-  updatedAt: z.number().int().nonnegative().optional()
-})
-export type RemoteSnapshotMessage = z.infer<typeof remoteSnapshotMessageSchema>
-
-export const sessionSnapshotEventPayloadSchema = z.object({
-  sessionId: z.string().min(1),
-  snapshotVersion: z.number().int().nonnegative(),
-  snapshotSeqCeiling: z.number().int().nonnegative(),
-  updatedAt: z.number().int().nonnegative().optional(),
-  messages: z.array(remoteSnapshotMessageSchema)
-})
+export const sessionSnapshotEventPayloadSchema = sessionSnapshotV2PayloadSchema
 export type SessionSnapshotEventPayload = z.infer<typeof sessionSnapshotEventPayloadSchema>
 
-export const sessionVersionBumpPayloadSchema = z.object({
-  sessionId: z.string().min(1),
-  version: z.number().int().nonnegative(),
-  updatedAt: z.number().int().nonnegative()
-})
+export const sessionVersionBumpPayloadSchema = semanticSessionVersionBumpPayloadSchema
 export type SessionVersionBumpPayload = z.infer<typeof sessionVersionBumpPayloadSchema>
 
 export const bridgeStatusPayloadSchema = z.object({
@@ -264,7 +227,7 @@ export const remoteCmdEnvelopeSchema = z.discriminatedUnion('event', [
     type: z.literal('cmd'),
     event: z.literal('message.cancel'),
     payload: z.object({
-      runId: z.string().uuid()
+      runId: remoteRunIdSchema
     })
   })
 ])
@@ -303,18 +266,33 @@ export const remoteEvtEnvelopeSchema = z.discriminatedUnion('event', [
   }),
   remoteBaseEnvelopeSchema.extend({
     type: z.literal('evt'),
-    event: z.literal('message.delta'),
-    payload: messageDeltaPayloadSchema
+    event: z.literal('message.started'),
+    payload: semanticMessageStartedPayloadSchema
   }),
   remoteBaseEnvelopeSchema.extend({
     type: z.literal('evt'),
-    event: z.literal('message.done'),
-    payload: messageDonePayloadSchema
+    event: z.literal('message.block.added'),
+    payload: semanticMessageBlockAddedPayloadSchema
   }),
   remoteBaseEnvelopeSchema.extend({
     type: z.literal('evt'),
-    event: z.literal('message.error'),
-    payload: messageErrorPayloadSchema
+    event: z.literal('message.block.updated'),
+    payload: semanticMessageBlockUpdatedPayloadSchema
+  }),
+  remoteBaseEnvelopeSchema.extend({
+    type: z.literal('evt'),
+    event: z.literal('message.block.completed'),
+    payload: semanticMessageBlockCompletedPayloadSchema
+  }),
+  remoteBaseEnvelopeSchema.extend({
+    type: z.literal('evt'),
+    event: z.literal('message.completed'),
+    payload: semanticMessageCompletedPayloadSchema
+  }),
+  remoteBaseEnvelopeSchema.extend({
+    type: z.literal('evt'),
+    event: z.literal('message.failed'),
+    payload: semanticMessageFailedPayloadSchema
   }),
   remoteBaseEnvelopeSchema.extend({
     type: z.literal('evt'),
@@ -356,11 +334,5 @@ export const remoteEnvelopeSchema = z.union([
 ])
 export type RemoteEnvelope = z.infer<typeof remoteEnvelopeSchema>
 
-export const remoteSnapshotResponseSchema = z.object({
-  sessionId: z.string().min(1),
-  snapshotVersion: z.number().int().nonnegative(),
-  snapshotSeqCeiling: z.number().int().nonnegative(),
-  updatedAt: z.number().int().nonnegative().optional(),
-  messages: z.array(remoteSnapshotMessageSchema)
-})
+export const remoteSnapshotResponseSchema = sessionSnapshotEventPayloadSchema
 export type RemoteSnapshotResponse = z.infer<typeof remoteSnapshotResponseSchema>

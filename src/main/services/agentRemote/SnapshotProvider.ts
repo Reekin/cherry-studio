@@ -1,40 +1,117 @@
 import { loggerService } from '@logger'
 import { agentMessageRepository } from '@main/services/agents/database/sessionMessageRepository'
+import { createSemanticSessionSnapshotV2, type SemanticBlock, type SemanticMessage } from '@shared/agents/semantics'
 import type { AgentPersistedMessage } from '@types'
 
 const logger = loggerService.withContext('SnapshotProvider')
 
-export interface SessionSnapshotMessage {
-  messageId: string
-  runId?: string
-  role: 'user' | 'assistant' | 'system' | 'tool'
-  content: string
-  status: 'streaming' | 'done' | 'error'
-  updatedAt?: number
+function toTimestamp(value: string | undefined, fallback = Date.now()): number {
+  if (!value) {
+    return fallback
+  }
+
+  const timestamp = Date.parse(value)
+  return Number.isFinite(timestamp) ? timestamp : fallback
 }
 
-export interface SessionSnapshot {
-  sessionId: string
-  snapshotVersion: number
-  snapshotSeqCeiling: number
-  messages: SessionSnapshotMessage[]
-  updatedAt: number
+function normalizeMessageStatus(status: string | undefined): SemanticMessage['status'] {
+  switch (status) {
+    case 'pending':
+    case 'processing':
+    case 'streaming':
+    case 'success':
+    case 'error':
+    case 'paused':
+      return status
+    case 'searching':
+      return 'processing'
+    default:
+      return 'success'
+  }
+}
+
+function normalizeRole(role: string | undefined): SemanticMessage['role'] {
+  switch (role) {
+    case 'assistant':
+    case 'system':
+    case 'tool':
+    case 'user':
+      return role
+    default:
+      return 'assistant'
+  }
+}
+
+function normalizeError(value: unknown) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined
+  }
+
+  const record = value as Record<string, unknown>
+  if (typeof record.message !== 'string') {
+    return undefined
+  }
+
+  return {
+    code: typeof record.code === 'string' ? record.code : 'PROVIDER_STREAM_FAILED',
+    message: record.message,
+    retryable: typeof record.retryable === 'boolean' ? record.retryable : true
+  }
+}
+
+function normalizeMetadata(value: unknown): Record<string, any> | undefined {
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, any>) : undefined
 }
 
 export class SnapshotProvider {
-  async getSessionSnapshot(sessionId: string, snapshotSeqCeiling = 0): Promise<SessionSnapshot | null> {
+  async getSessionSnapshot(sessionId: string, snapshotSeqCeiling = 0) {
     try {
       const history = await agentMessageRepository.getSessionHistory(sessionId)
-      const messages = history.map((message, index) => this.toSnapshotMessage(message, index))
-      const updatedAt = messages.reduce((latest, message) => Math.max(latest, message.updatedAt ?? 0), 0)
+      const messages: SemanticMessage[] = []
+      const blocks: SemanticBlock[] = []
 
-      return {
-        sessionId,
-        snapshotVersion: messages.length,
-        snapshotSeqCeiling,
-        messages,
-        updatedAt: updatedAt || Date.now()
-      }
+      history.forEach((entry) => {
+        const message = entry?.message
+        if (!message) {
+          return
+        }
+
+        const createdAt = toTimestamp(message.createdAt)
+        const updatedAt = toTimestamp(message.updatedAt ?? message.createdAt, createdAt)
+        const normalizedBlocks = this.normalizeBlocks(entry?.blocks, message.id, createdAt)
+
+        messages.push({
+          messageId: message.id,
+          sessionId,
+          runId: typeof message.traceId === 'string' ? message.traceId : undefined,
+          role: normalizeRole(message.role),
+          status: normalizeMessageStatus(message.status),
+          createdAt,
+          updatedAt,
+          blockIds: normalizedBlocks.map((block) => block.blockId),
+          metadata: undefined,
+          error: normalizeError((message as Record<string, unknown>).error)
+        })
+
+        blocks.push(...normalizedBlocks.map((block, index) => ({ ...block, order: index })))
+      })
+
+      const updatedAt = Math.max(
+        0,
+        ...messages.map((message) => message.updatedAt),
+        ...blocks.map((block) => block.updatedAt)
+      )
+
+      return createSemanticSessionSnapshotV2(
+        {
+          sessionId,
+          version: updatedAt || messages.length + blocks.length,
+          updatedAt: updatedAt || Date.now(),
+          messages,
+          blocks
+        },
+        snapshotSeqCeiling
+      )
     } catch (error) {
       logger.error('Failed to build session snapshot', {
         sessionId,
@@ -44,92 +121,37 @@ export class SnapshotProvider {
     }
   }
 
-  private toSnapshotMessage(message: AgentPersistedMessage, index: number): SessionSnapshotMessage {
-    const role = this.normalizeRole(message?.message?.role)
-    const messageId = message?.message?.id || `${role}-${index + 1}`
-
-    return {
-      messageId,
-      runId: typeof message?.message?.traceId === 'string' ? message.message.traceId : undefined,
-      role,
-      content: this.extractContent(message),
-      status: this.normalizeStatus(message?.message?.status),
-      updatedAt: this.parseTimestamp(message?.message?.updatedAt ?? message?.message?.createdAt)
-    }
-  }
-
-  private normalizeRole(role: string | undefined): SessionSnapshotMessage['role'] {
-    switch (role) {
-      case 'assistant':
-      case 'system':
-      case 'tool':
-      case 'user':
-        return role
-      default:
-        return 'assistant'
-    }
-  }
-
-  private normalizeStatus(status: string | undefined): SessionSnapshotMessage['status'] {
-    switch (status) {
-      case 'processing':
-      case 'pending':
-      case 'searching':
-        return 'streaming'
-      case 'error':
-        return 'error'
-      default:
-        return 'done'
-    }
-  }
-
-  private parseTimestamp(value: string | undefined): number | undefined {
-    if (!value) {
-      return undefined
+  private normalizeBlocks(
+    blocks: AgentPersistedMessage['blocks'] | undefined,
+    messageId: string,
+    messageCreatedAt: number
+  ): SemanticBlock[] {
+    if (!Array.isArray(blocks)) {
+      return []
     }
 
-    const timestamp = Date.parse(value)
-    return Number.isFinite(timestamp) ? timestamp : undefined
-  }
-
-  private extractContent(message: AgentPersistedMessage | undefined): string {
-    const blockText = Array.isArray(message?.blocks)
-      ? message.blocks
-          .map((block) => {
-            if (typeof block === 'string') {
-              return block
-            }
-
-            if (block && typeof block === 'object') {
-              if ('text' in block && typeof block.text === 'string') {
-                return block.text
-              }
-
-              if ('content' in block && typeof block.content === 'string') {
-                return block.content
-              }
-            }
-
-            return ''
-          })
-          .filter(Boolean)
-          .join('\n')
-      : ''
-
-    if (blockText) {
-      return blockText
-    }
-
-    if (message?.message && typeof message.message === 'object') {
-      if ('content' in message.message && typeof message.message.content === 'string') {
-        return message.message.content
+    return blocks.flatMap((block, index) => {
+      if (!block || typeof block === 'string') {
+        return []
       }
-    }
 
-    try {
-      return JSON.stringify(message?.message ?? message ?? '')
-    } catch {
-      return ''
-    }
+      const createdAt = toTimestamp(block.createdAt, messageCreatedAt)
+      const updatedAt = toTimestamp(block.updatedAt ?? block.createdAt, createdAt)
+
+      return [
+        {
+          blockId: typeof block.id === 'string' ? block.id : `${messageId}:block:${index}`,
+          messageId,
+          type: (typeof block.type === 'string' ? block.type : 'unknown') as SemanticBlock['type'],
+          status: (typeof block.status === 'string' ? block.status : 'success') as SemanticBlock['status'],
+          order: index,
+          createdAt,
+          updatedAt,
+          content: 'content' in block ? block.content : undefined,
+          metadata: normalizeMetadata('metadata' in block ? block.metadata : undefined),
+          error: normalizeError('error' in block ? block.error : undefined)
+        }
+      ]
+    })
   }
 }

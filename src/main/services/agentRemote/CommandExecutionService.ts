@@ -13,6 +13,7 @@ import type {
 import { AgentConfigurationSchema } from '@types'
 
 import { EventPublisher } from './EventPublisher'
+import { RemoteMessageProjectionBuilder } from './RemoteMessageProjection'
 import { SnapshotProvider } from './SnapshotProvider'
 import { SseEventAdapter } from './SseEventAdapter'
 import {
@@ -36,8 +37,6 @@ type PersistedRemoteBlock = AgentPersistedMessage['blocks'][number]
 type PersistedExchangeSnapshot = {
   userMessageId: string
   assistantMessageId: string
-  assistantBlockId: string
-  assistantContent: string
   agentSessionId: string
 }
 
@@ -298,9 +297,13 @@ export class CommandExecutionService {
     const runId = envelope.runId ?? randomUUID()
     const assistantMessageId = envelope.payload.messageId ?? `assistant:${runId}`
     const shouldPublishStream = envelope.payload.origin !== 'desktop' || envelope.payload.runPushPolicy !== 'meta_only'
+    let session: GetAgentSessionResponse | null = null
+    let persisted: PersistedExchangeSnapshot | null = null
+    let userMessagePersisted = false
+    let projectionBuilder: RemoteMessageProjectionBuilder | null = null
 
     try {
-      const session = await sessionService.getSession(envelope.payload.agentId, envelope.payload.sessionId)
+      session = await sessionService.getSession(envelope.payload.agentId, envelope.payload.sessionId)
 
       if (!session) {
         return {
@@ -314,8 +317,17 @@ export class CommandExecutionService {
         }
       }
 
-      const persisted = await this.createPersistedExchangeSnapshot(session, envelope, runId, assistantMessageId)
+      persisted = await this.createPersistedExchangeSnapshot(session, envelope, runId, assistantMessageId)
+      projectionBuilder = new RemoteMessageProjectionBuilder({
+        messageId: assistantMessageId,
+        agentId: session.agent_id,
+        sessionId: session.id,
+        agentSessionId: persisted.agentSessionId,
+        runId
+      })
+
       await this.persistUserMessage(session, envelope.payload.content, persisted)
+      userMessagePersisted = true
 
       const { stream, completion } = await sessionMessageService.createSessionMessage(
         session,
@@ -325,55 +337,84 @@ export class CommandExecutionService {
         new AbortController()
       )
 
-      await this.persistAssistantMessage(session, persisted, {
-        status: 'processing'
-      })
-
-      for await (const remoteEvent of this.sseEventAdapter.adaptStream(stream, {
-        sessionId: envelope.payload.sessionId,
-        requestId: envelope.requestId,
-        runId,
-        messageId: assistantMessageId
-      })) {
-        if (remoteEvent.type === 'evt' && remoteEvent.event === 'message.delta') {
-          persisted.assistantContent += remoteEvent.payload.delta
-          await this.persistAssistantMessage(session, persisted, {
-            status: 'processing',
-            updatedAt: remoteEvent.payload.updatedAt
-          })
-        }
-
-        if (shouldPublishStream) {
+      await this.persistAssistantProjection(session, persisted.agentSessionId, projectionBuilder)
+      const startedEvents = projectionBuilder.startStreaming(Date.now())
+      if (shouldPublishStream) {
+        for (const remoteEvent of this.sseEventAdapter.adaptEvents(startedEvents, {
+          requestId: envelope.requestId,
+          runId
+        })) {
           this.eventPublisher.publishEnvelope(remoteEvent)
         }
       }
 
+      const reader = stream.getReader()
+      try {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) {
+            break
+          }
+
+          const updatedAt = Date.now()
+          const streamAgentSessionId = this.extractAgentSessionId(value)
+          if (streamAgentSessionId && streamAgentSessionId !== persisted.agentSessionId) {
+            persisted.agentSessionId = streamAgentSessionId
+            projectionBuilder.setAgentSessionId(streamAgentSessionId)
+            await this.persistUserMessage(session, envelope.payload.content, persisted)
+            await this.persistAssistantProjection(session, persisted.agentSessionId, projectionBuilder)
+          }
+
+          const semanticEvents = projectionBuilder.applyPart(value, updatedAt)
+
+          if (semanticEvents.length > 0) {
+            await this.persistAssistantProjection(session, persisted.agentSessionId, projectionBuilder)
+          }
+
+          if (shouldPublishStream) {
+            for (const remoteEvent of this.sseEventAdapter.adaptEvents(semanticEvents, {
+              requestId: envelope.requestId,
+              runId
+            })) {
+              this.eventPublisher.publishEnvelope(remoteEvent)
+            }
+          }
+        }
+      } finally {
+        reader.releaseLock()
+      }
+
       await completion
 
-      const snapshot = await this.finalizeAssistantPersistence(session, persisted, {
+      const completedEvents = projectionBuilder.finalize('success', {
+        updatedAt: Date.now()
+      })
+      const snapshot = await this.finalizeAssistantPersistence(session, persisted.agentSessionId, projectionBuilder, {
         status: 'success'
       })
       const updatedAt = snapshot?.updatedAt ?? Date.now()
       const version = snapshot?.snapshotVersion ?? 0
 
       if (shouldPublishStream) {
-        this.eventPublisher.publishEnvelope(
-          createRemoteEventEnvelope(
-            'message.done',
-            {
-              sessionId: envelope.payload.sessionId,
-              runId,
-              messageId: assistantMessageId,
-              version,
-              updatedAt,
-              status: 'success'
-            },
-            {
-              requestId: envelope.requestId,
-              runId
-            }
-          )
+        const finalizedEvents = completedEvents.map((event) =>
+          event.event === 'message.completed'
+            ? {
+                ...event,
+                payload: {
+                  ...event.payload,
+                  version,
+                  updatedAt
+                }
+              }
+            : event
         )
+
+        for (const remoteEvent of this.sseEventAdapter.adaptEvents(finalizedEvents, {
+          requestId: envelope.requestId,
+          runId
+        })) {
+          this.eventPublisher.publishEnvelope(remoteEvent)
+        }
       }
 
       this.eventPublisher.publishSessionVersionBump({
@@ -405,14 +446,59 @@ export class CommandExecutionService {
       )
 
       try {
-        const session = await sessionService.getSession(envelope.payload.agentId, envelope.payload.sessionId)
+        if (!session) {
+          session = await sessionService.getSession(envelope.payload.agentId, envelope.payload.sessionId)
+        }
+
         if (session) {
-          const persisted = await this.createPersistedExchangeSnapshot(session, envelope, runId, assistantMessageId)
-          await this.persistUserMessage(session, envelope.payload.content, persisted)
-          await this.finalizeAssistantPersistence(session, persisted, {
-            status: 'error',
+          persisted ??= await this.createPersistedExchangeSnapshot(session, envelope, runId, assistantMessageId)
+          projectionBuilder ??= new RemoteMessageProjectionBuilder({
+            messageId: assistantMessageId,
+            agentId: session.agent_id,
+            sessionId: session.id,
+            agentSessionId: persisted.agentSessionId,
+            runId
+          })
+
+          if (!userMessagePersisted) {
+            await this.persistUserMessage(session, envelope.payload.content, persisted)
+          }
+
+          const failureEvents = projectionBuilder.finalize('error', {
+            updatedAt: Date.now(),
             errorMessage: responseEnvelope.payload.message
           })
+          const snapshot = await this.finalizeAssistantPersistence(
+            session,
+            persisted.agentSessionId,
+            projectionBuilder,
+            {
+              status: 'error',
+              errorMessage: responseEnvelope.payload.message
+            }
+          )
+
+          if (shouldPublishStream) {
+            const finalizedEvents = failureEvents.map((event) =>
+              event.event === 'message.failed' && snapshot
+                ? {
+                    ...event,
+                    payload: {
+                      ...event.payload,
+                      version: snapshot.snapshotVersion,
+                      updatedAt: snapshot.updatedAt
+                    }
+                  }
+                : event
+            )
+
+            for (const remoteEvent of this.sseEventAdapter.adaptEvents(finalizedEvents, {
+              requestId: envelope.requestId,
+              runId
+            })) {
+              this.eventPublisher.publishEnvelope(remoteEvent)
+            }
+          }
         }
       } catch (persistError) {
         logger.warn('Failed to persist remote error state', {
@@ -420,27 +506,6 @@ export class CommandExecutionService {
           runId,
           sessionId: envelope.payload.sessionId
         })
-      }
-
-      if (shouldPublishStream) {
-        this.eventPublisher.publishEnvelope(
-          createRemoteEventEnvelope(
-            'message.error',
-            {
-              sessionId: envelope.payload.sessionId,
-              runId,
-              messageId: assistantMessageId,
-              code: responseEnvelope.payload.code,
-              message: responseEnvelope.payload.message,
-              retryable: true,
-              updatedAt: Date.now()
-            },
-            {
-              requestId: envelope.requestId,
-              runId
-            }
-          )
-        )
       }
 
       return {
@@ -496,8 +561,6 @@ export class CommandExecutionService {
     return {
       userMessageId: `user:${envelope.requestId ?? runId}`,
       assistantMessageId,
-      assistantBlockId: `${assistantMessageId}:main`,
-      assistantContent: '',
       agentSessionId: lastAgentSessionId
     }
   }
@@ -536,63 +599,30 @@ export class CommandExecutionService {
     })
   }
 
-  private async persistAssistantMessage(
+  private async persistAssistantProjection(
     session: GetAgentSessionResponse,
-    persisted: PersistedExchangeSnapshot,
-    options: {
-      status: 'processing' | 'success' | 'error'
-      updatedAt?: number
-      errorMessage?: string
-    }
+    agentSessionId: string,
+    projectionBuilder: RemoteMessageProjectionBuilder
   ): Promise<void> {
-    const updatedAtIso = new Date(options.updatedAt ?? Date.now()).toISOString()
-    const createdAtIso = updatedAtIso
-    const message = this.createMessageRecord(session, {
-      id: persisted.assistantMessageId,
-      role: 'assistant',
-      status: options.status === 'processing' ? 'processing' : options.status === 'error' ? 'error' : 'success',
-      content: persisted.assistantContent,
-      createdAt: createdAtIso,
-      updatedAt: updatedAtIso,
-      agentSessionId: persisted.agentSessionId
-    })
-
-    const block = this.createMainTextBlock(message.id, persisted.assistantContent, {
-      id: persisted.assistantBlockId,
-      createdAt: createdAtIso,
-      updatedAt: updatedAtIso,
-      status: options.status === 'processing' ? 'streaming' : options.status === 'error' ? 'error' : 'success',
-      error: options.errorMessage
-        ? ({
-            message: options.errorMessage
-          } as PersistedRemoteBlock['error'])
-        : undefined
-    })
-
     await agentMessageRepository.persistExchange({
       sessionId: session.id,
-      agentSessionId: persisted.agentSessionId,
+      agentSessionId,
       assistant: {
-        payload: {
-          message,
-          blocks: [block]
-        }
+        payload: projectionBuilder.toPersistedMessage()
       }
     })
   }
 
   private async finalizeAssistantPersistence(
     session: GetAgentSessionResponse,
-    persisted: PersistedExchangeSnapshot,
-    options: {
+    agentSessionId: string,
+    projectionBuilder: RemoteMessageProjectionBuilder,
+    _options: {
       status: 'success' | 'error'
       errorMessage?: string
     }
   ) {
-    await this.persistAssistantMessage(session, persisted, {
-      status: options.status,
-      errorMessage: options.errorMessage
-    })
+    await this.persistAssistantProjection(session, agentSessionId, projectionBuilder)
 
     return this.snapshotProvider.getSessionSnapshot(session.id)
   }
@@ -646,6 +676,23 @@ export class CommandExecutionService {
       status: overrides.status,
       error: overrides.error
     } as PersistedRemoteBlock
+  }
+
+  private extractAgentSessionId(part: { type: string; rawValue?: unknown }): string | undefined {
+    if (part.type !== 'raw') {
+      return undefined
+    }
+
+    const raw = part.rawValue
+    if (!raw || typeof raw !== 'object') {
+      return undefined
+    }
+
+    if (!('session_id' in raw) || typeof raw.session_id !== 'string') {
+      return undefined
+    }
+
+    return raw.session_id.trim() || undefined
   }
 
   private toRemoteAgentPayload(agent: AgentEntity) {

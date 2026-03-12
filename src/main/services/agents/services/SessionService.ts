@@ -15,7 +15,6 @@ import { BaseService } from '../BaseService'
 import { agentsTable, type InsertSessionRow, type SessionRow, sessionsTable } from '../database/schema'
 import type { AgentModelField } from '../errors'
 import { pluginService } from '../plugins/PluginService'
-import { builtinSlashCommands } from './claudecode/commands'
 
 const logger = loggerService.withContext('SessionService')
 
@@ -34,12 +33,7 @@ export class SessionService extends BaseService {
    * Override BaseService.listSlashCommands to merge builtin and plugin commands
    */
   async listSlashCommands(agentType: string, agentId?: string): Promise<SlashCommand[]> {
-    const commands: SlashCommand[] = []
-
-    // Add builtin slash commands
-    if (agentType === 'claude-code') {
-      commands.push(...builtinSlashCommands)
-    }
+    const commands: SlashCommand[] = await super.listSlashCommands(agentType as AgentEntity['type'])
 
     // Add local command plugins from .claude/commands/
     if (agentId) {
@@ -61,7 +55,7 @@ export class SessionService extends BaseService {
         logger.info('Listed slash commands', {
           agentType,
           agentId,
-          builtinCount: builtinSlashCommands.length,
+          builtinCount: commands.length - commandPlugins.length,
           localCount: commandPlugins.length,
           totalCount: commands.length
         })

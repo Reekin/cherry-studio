@@ -11,7 +11,7 @@ import { and, desc, eq, not } from 'drizzle-orm'
 import { BaseService } from '../BaseService'
 import { sessionMessagesTable } from '../database/schema'
 import type { AgentStreamEvent } from '../interfaces/AgentStreamInterface'
-import ClaudeCodeService from './claudecode'
+import { loadAgentProviderRuntime } from '../providers'
 
 const logger = loggerService.withContext('SessionMessageService')
 
@@ -95,7 +95,6 @@ class TextStreamAccumulator {
 
 export class SessionMessageService extends BaseService {
   private static instance: SessionMessageService | null = null
-  private cc: ClaudeCodeService = new ClaudeCodeService()
 
   static getInstance(): SessionMessageService {
     if (!SessionMessageService.instance) {
@@ -164,16 +163,8 @@ export class SessionMessageService extends BaseService {
     const agentSessionId = await this.getLastAgentSessionId(session.id)
     logger.debug('Session Message stream message data:', { message: req, session_id: agentSessionId })
 
-    if (session.agent_type !== 'claude-code') {
-      logger.error('Agent provider is not implemented for session streaming', { agent_type: session.agent_type })
-      throw new Error(
-        session.agent_type === 'codex'
-          ? 'Codex provider is not implemented yet'
-          : 'Unsupported agent type for streaming'
-      )
-    }
-
-    const claudeStream = await this.cc.invoke(req.content, session, abortController, agentSessionId, {
+    const providerRuntime = await loadAgentProviderRuntime(session.agent_type)
+    const agentStream = await providerRuntime.invoke(req.content, session, abortController, agentSessionId, {
       effort: req.effort,
       thinking: req.thinking
     })
@@ -198,12 +189,12 @@ export class SessionMessageService extends BaseService {
     const cleanup = () => {
       if (finished) return
       finished = true
-      claudeStream.removeAllListeners()
+      agentStream.removeAllListeners()
     }
 
     const stream = new ReadableStream<TextStreamPart<Record<string, any>>>({
       start: (controller) => {
-        claudeStream.on('data', async (event: AgentStreamEvent) => {
+        agentStream.on('data', async (event: AgentStreamEvent) => {
           if (finished) return
           try {
             switch (event.type) {
@@ -244,7 +235,8 @@ export class SessionMessageService extends BaseService {
               }
 
               default:
-                logger.warn('Unknown event type from Claude Code service:', {
+                logger.warn('Unknown event type from agent provider runtime', {
+                  agent_type: session.agent_type,
                   type: event.type
                 })
                 break

@@ -1,63 +1,35 @@
 import { loggerService } from '@logger'
-import type { TextStreamPart } from 'ai'
+import type { SemanticEvent } from '@shared/agents/semantics'
 
 import { createRemoteEventEnvelope, type RemoteEnvelope } from './types'
 
 const logger = loggerService.withContext('SseEventAdapter')
 
-interface AdaptStreamContext {
-  sessionId: string
+interface AdaptSemanticContext {
   requestId?: string
-  runId: string
-  messageId: string
-  version?: number
-  updatedAt?: number
+  runId?: string
 }
 
 export class SseEventAdapter {
-  async *adaptStream(
-    stream: ReadableStream<TextStreamPart<Record<string, any>>>,
-    context: AdaptStreamContext
-  ): AsyncGenerator<RemoteEnvelope> {
-    const reader = stream.getReader()
+  adaptEvent(event: SemanticEvent, context: AdaptSemanticContext): RemoteEnvelope {
+    const eventRunId =
+      'runId' in event.payload && typeof event.payload.runId === 'string' ? event.payload.runId : undefined
+    return createRemoteEventEnvelope(event.event, event.payload, {
+      requestId: context.requestId,
+      runId: context.runId ?? eventRunId
+    })
+  }
 
+  adaptEvents(events: SemanticEvent[], context: AdaptSemanticContext): RemoteEnvelope[] {
     try {
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) {
-          break
-        }
-
-        if (value?.type !== 'text-delta' || !value.text) {
-          continue
-        }
-
-        yield createRemoteEventEnvelope(
-          'message.delta',
-          {
-            sessionId: context.sessionId,
-            runId: context.runId,
-            messageId: context.messageId,
-            role: 'assistant',
-            delta: value.text,
-            version: context.version,
-            updatedAt: context.updatedAt ?? Date.now()
-          },
-          {
-            requestId: context.requestId,
-            runId: context.runId
-          }
-        )
-      }
+      return events.map((event) => this.adaptEvent(event, context))
     } catch (error) {
-      logger.error('Failed to adapt text stream into remote events', {
+      logger.error('Failed to adapt semantic events into remote envelopes', {
         error: error instanceof Error ? error.message : String(error),
-        runId: context.runId,
-        sessionId: context.sessionId
+        requestId: context.requestId,
+        runId: context.runId
       })
       throw error
-    } finally {
-      reader.releaseLock()
     }
   }
 }
